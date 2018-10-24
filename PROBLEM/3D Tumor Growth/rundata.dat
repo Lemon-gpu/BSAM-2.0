@@ -1,0 +1,17 @@
+&rundata
+
+restart = .false.
+restartframe = 0
+syncelliptic = .false.
+
+outframes = 10
+outputuniformmesh = .false.
+getafterstepstats = .true.
+timeiterations = 10000
+
+maxvcycles = 20
+nsmoothingpasses = 10
+omega = 5.5d-01
+qerrortol = 1.0d-11
+
+dt = 1.0d-04/

@@ -1,0 +1,81 @@
+&griddata
+
+ndims = 3
+maxlevel = 1
+minlevel = -5
+
+qtolerance(0) = 1.0d-2
+qtolerance(1) = 1.0d-2
+qtolerance(2) = 1.0d-2
+qtolerance(3) = 1.0d-2
+qtolerance(4) = 1.0d-2
+qtolerance(5) = 1.0d-2
+qtolerance(6) = 1.0d-2
+qtolerance(7) = 1.0d-2
+
+
+ibuffer(0) = 1
+ibuffer(1) = 1
+ibuffer(2) = 1
+ibuffer(3) = 1
+ibuffer(4) = 1
+ibuffer(5) = 1
+ibuffer(6) = 1
+ibuffer(7) = 1
+
+minimumgridpoints(0) = 4
+minimumgridpoints(1) = 4
+minimumgridpoints(2) = 4
+minimumgridpoints(3) = 4
+minimumgridpoints(4) = 4
+minimumgridpoints(5) = 4
+minimumgridpoints(6) = 4
+minimumgridpoints(7) = 4
+
+desiredfillratios(0) = 9.0d-01
+desiredfillratios(1) = 9.0d-01
+desiredfillratios(2) = 9.0d-01
+desiredfillratios(3) = 9.0d-01
+desiredfillratios(4) = 9.0d-01
+desiredfillratios(5) = 9.0d-01
+desiredfillratios(6) = 9.0d-01
+desiredfillratios(7) = 9.0d-01
+
+errflagopt(0) = 10
+errflagopt(1) = 10
+errflagopt(2) = 10
+errflagopt(3) = 10
+errflagopt(4) = 10
+errflagopt(5) = 10
+errflagopt(6) = 10
+errflagopt(7) = 10
+
+mx(1) =  32
+mx(2) =  32
+mx(3) =  32
+
+mglobal(1,1) = 1
+mglobal(1,2) = 32
+mglobal(2,1) = 1
+mglobal(2,2) = 32
+mglobal(3,1) = 1
+mglobal(3,2) = 32
+
+xlower(1) =  0.0d+00
+xlower(2) =  0.0d+00
+xlower(3) =  0.0d+00
+xupper(1) =  25.6d+00
+xupper(2) =  25.6d+00
+xupper(3) =  25.6d+00
+
+mbc = 1
+mthbc(1) = 10
+mthbc(2) = 10
+mthbc(3) = 10
+mthbc(4) = 10
+mthbc(5) = 10
+mthbc(6) = 10
+
+nccv = 3
+naxv = 0
+nfcv = 1/

@@ -1,0 +1,53 @@
+&problemdata
+
+alpha = 1.0d+00
+eps   = 0.1
+gamma = 1.0D+01
+shearvel = 2.0D+00
+
+pp    = 0
+AA    = 0
+Zeta  = 10
+epep  = 0.01
+DtDh  =1
+MD=10
+
+
+xx11 = -1.2
+xx12 = -0.6
+yy11 = -0.4
+yy12 =  0.4
+xx21 = -0.4
+xx22 =  0.4
+yy21 = -1.2
+yy22 =  1.2
+xx31 =  0.6
+xx32 =  1.2
+yy31 = -0.4
+yy32 =  0.4
+xx41 = -1.7
+xx42 =  1.7
+yy41 = -0.1
+yy42 =  0.1
+ x0 =  2.0
+ y0 =  2.0
+ x1 = -0.35
+ y1 =  0.35
+ x2 =  0.35
+ y2 = -0.35
+ sigmax = 0.25
+ sigmay = 0.25
+DD = 1.0
+FFF = 4.0
+Tau = 0.0
+Rou00 = 0.01
+Rou01 = 0.05
+Gama = 1.0
+kk1 = 1
+kk2 = 1
+dede1 = 0.0001
+dede2 = 0.0001
+kkp1 = 1.0
+kkp2 = 3.0
+kkm1 = 1.0
+kkm2 = 3.0/
