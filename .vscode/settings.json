@@ -1,0 +1,9 @@
+{
+  "fortran.linter.includePaths": [
+    "Fortran/LIBRARY/**",
+    "Fortran/PROGRAM/**",
+    "Fortran/PROBLEM/3D Tumor Growt/**",
+    "Fortran/PROBLEM/3D Tumor Growth/MODF/**"
+  ],
+  "fortran.linter.modOutput": "${workspaceFolder}/Fortran/PROBLEM/3D Tumor Growth/MODF",
+}

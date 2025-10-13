@@ -53,16 +53,16 @@
 ! Revision History: Ver. 2.0 Jul. 2015 Steven Wise
 ! -----------------------------------------------------------------------
 PROGRAM BSAMDriver
-USE BSAMRoutines, ONLY: BSAMSolver
-IMPLICIT NONE
+   USE BSAMRoutines, ONLY: BSAMSolver
+   IMPLICIT NONE
 !
-DOUBLE PRECISION:: t0, t1
+   DOUBLE PRECISION:: t0, t1
 !
-CALL CPU_TIME(t0)
-CALL BSAMSolver
-CALL CPU_TIME(t1)
+   CALL CPU_TIME(t0)
+   CALL BSAMSolver
+   CALL CPU_TIME(t1)
 !
-PRINT '("Total execution time=", f10.2, " seconds")', t1-t0
+   PRINT '("Total execution time=", f10.2, " seconds")', t1-t0
 !
 END PROGRAM BSAMDriver
 

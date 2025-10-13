@@ -50,126 +50,126 @@ MODULE NodeInfoDef
    IMPLICIT NONE
 !
    SAVE
-      PRIVATE   ! 本模块默认私有（仅显式标注为 PUBLIC 的符号对外可见）
+   PRIVATE   ! 本模块默认私有（仅显式标注为 PUBLIC 的符号对外可见）
 !
-      LOGICAL, PUBLIC:: fluxbalancing, getafterstepstats, makeconformingmesh, &
-            meshbuildcomplete, outputinitialdata, outputuniformmesh, &
-            periodicboundaryconditions, restart, syncelliptic
-      ! fluxbalancing                    : （可选）是否进行通量守恒/质量平衡修正
-      ! getafterstepstats                : 是否在每个时间步后收集统计量（积分、网格规模等）
-      ! makeconformingmesh               : 构网时是否强制网格“符合性”（最多一层悬挂点）
-      ! meshbuildcomplete                : 当前 AMR 网格层级是否完成构建（用于控制删除旧网格）
-      ! outputinitialdata                : 是否输出初始场数据（第一帧）
-      ! outputuniformmesh                : 是否输出各层统一网格（Uniform grid）数据
-      ! periodicboundaryconditions       : 是否启用周期性边界条件
-      ! restart                          : 是否从重启文件恢复
-      ! syncelliptic                     : 是否执行椭圆场同步（例如首次将 dt 置零的同步阶段）
+   LOGICAL, PUBLIC:: fluxbalancing, getafterstepstats, makeconformingmesh, &
+      meshbuildcomplete, outputinitialdata, outputuniformmesh, &
+      periodicboundaryconditions, restart, syncelliptic
+   ! fluxbalancing                    : （可选）是否进行通量守恒/质量平衡修正
+   ! getafterstepstats                : 是否在每个时间步后收集统计量（积分、网格规模等）
+   ! makeconformingmesh               : 构网时是否强制网格“符合性”（最多一层悬挂点）
+   ! meshbuildcomplete                : 当前 AMR 网格层级是否完成构建（用于控制删除旧网格）
+   ! outputinitialdata                : 是否输出初始场数据（第一帧）
+   ! outputuniformmesh                : 是否输出各层统一网格（Uniform grid）数据
+   ! periodicboundaryconditions       : 是否启用周期性边界条件
+   ! restart                          : 是否从重启文件恢复
+   ! syncelliptic                     : 是否执行椭圆场同步（例如首次将 dt 置零的同步阶段）
 !
 ! Double (r8) and extended (rext) precision if available:
-      INTEGER, PARAMETER, PUBLIC:: r8 = SELECTED_REAL_KIND(15,307), &
-            int2 = SELECTED_INT_KIND(2)
-      ! r8   : 双精度实数 kind（约 15 位十进制有效数字，指数范围至 10^307）
-      ! int2 : 短整型 kind（可存储小整数，常用于紧凑存储层级景观等）
+   INTEGER, PARAMETER, PUBLIC:: r8 = SELECTED_REAL_KIND(15,307), &
+      int2 = SELECTED_INT_KIND(2)
+   ! r8   : 双精度实数 kind（约 15 位十进制有效数字，指数范围至 10^307）
+   ! int2 : 短整型 kind（可存储小整数，常用于紧凑存储层级景观等）
 !
-      INTEGER, PARAMETER, PUBLIC:: errflagdefault = 1, &
-            errflaguser = 10, &
-            internalbc = 999, &
-            maxsubgrids = 1024, &
-            maxdims = 3, &
-            maxdepth = 10, &
-            maxnccv = 10, &
-            rootlevel = 0, &
-            sourcefield = 1, &
-            solutionfield = 2, &
-            auxiliaryfield = 3
-      ! errflagdefault : 默认误差标记策略（相对截断误差）
-      ! errflaguser    : 用户自定义误差标记策略的代号
-      ! internalbc     : 内部边界的占位编码（非物理边界），用于块间接口
-      ! maxsubgrids    : 单次分裂生成子网格的最大数量上限
-      ! maxdims        : 最大空间维度（支持 2D/3D，此处为 3 的上限）
-      ! maxdepth       : 最大层级深度（0..maxdepth）
-      ! maxnccv        : 最大 CC 分量数上限（如 q 的通道数）
-      ! rootlevel      : 根层级编号（约定为 0）
-      ! sourcefield    : 泛型“字段选择器”常量：源项字段编号
-      ! solutionfield  : 泛型“字段选择器”常量：解场（solution）字段编号
-      ! auxiliaryfield : 泛型“字段选择器”常量：辅助场（aux）字段编号
-      LOGICAL, DIMENSION(0:maxdepth), PUBLIC:: defectivegridlevel   ! 标记各层是否存在不合规网格（需先修复）
-      INTEGER, PUBLIC:: amrrestarts, errortype, finestlevel, gridnumber, maxvcycles, &
-            maxlevel, mbc, minlevel, ndims, nmasscorrlayers, naxv, &
-            nccv, nfcv, nperiodicoffsets, nrootgrids, nsmoothingpasses, &
-            ntaggedcells, outframes, restartframe, timeiterations, &
-            totalmeshsize, updateauxfreq
-      ! amrrestarts        : AMR 重建重试计数（用于修复网格缺陷时回退重构）
-      ! errortype          : 误差度量类型（1=合成/混合 L2；2=分量级 L2 等）
-      ! finestlevel        : 当前构网后最细层级编号
-      ! gridnumber         : 调试/打印中使用的网格计数器
-      ! maxvcycles         : 每个时间步内最多执行的 V-cycle 次数
-      ! maxlevel           : 允许细化到的最大层级
-      ! mbc                : 幽灵层格点厚度（支持 1 或 2）
-      ! minlevel           : 多重网格的最粗层级（≤ 0，通常为 0 或负数作为 seed）
-      ! ndims              : 维度（2 或 3）
-      ! nmasscorrlayers    : 质量修正层（边带）链表的层数计数
-      ! naxv               : 辅助变量通道数（aux 的分量数）
-      ! nccv               : CC 变量通道数（q 的分量数）
-      ! nfcv               : FC 变量通道数（v1/v2/v3 的分量数）
-      ! nperiodicoffsets   : 周期性偏移向量的数量（每层）
-      ! nrootgrids         : 根层块数（当前实现通常为 1）
-      ! nsmoothingpasses   : 每层每次 LevelRelax 的平滑步（红黑各一次为 2）
-      ! ntaggedcells       : 被误差估计标记的单元数（用于 BR 分裂）
-      ! outframes          : 计划输出帧数（时间段内总帧数）
-      ! restartframe       : 重启时的起始帧编号
-      ! timeiterations     : 时间步总数（整体迭代次数）
-      ! totalmeshsize      : 合成网格尺寸（总单元数）
-      ! updateauxfreq      : V-cycle 内调用 UpdateAux 的频率（步数间隔）
-      INTEGER, DIMENSION(:), ALLOCATABLE, PUBLIC:: periodicoffsetindex   ! 周期偏移索引表（索引到 poffset 列表）
-      INTEGER, DIMENSION(0:maxdepth), PUBLIC:: errflagopt, ibuffer, minimumgridpoints
-      ! errflagopt(level)     : 每层误差标记策略选择（默认/用户）
-      ! ibuffer(level)        : 对被标记单元的缓冲层厚度（用于膨胀标记区域）
-      ! minimumgridpoints(L)  : 子块的最小尺寸（每维）约束
-      INTEGER, DIMENSION(:,:), ALLOCATABLE, PUBLIC:: poffset              ! 周期性偏移向量集合（ndims × nperiodicoffsets）
-      INTEGER, DIMENSION(0:maxdepth,1:maxdims), PUBLIC:: mxmax            ! 各层最大可能的网格尺寸（按 r=2 递推）
+   INTEGER, PARAMETER, PUBLIC:: errflagdefault = 1, &
+      errflaguser = 10, &
+      internalbc = 999, &
+      maxsubgrids = 1024, &
+      maxdims = 3, &
+      maxdepth = 10, &
+      maxnccv = 10, &
+      rootlevel = 0, &
+      sourcefield = 1, &
+      solutionfield = 2, &
+      auxiliaryfield = 3
+   ! errflagdefault : 默认误差标记策略（相对截断误差）
+   ! errflaguser    : 用户自定义误差标记策略的代号
+   ! internalbc     : 内部边界的占位编码（非物理边界），用于块间接口
+   ! maxsubgrids    : 单次分裂生成子网格的最大数量上限
+   ! maxdims        : 最大空间维度（支持 2D/3D，此处为 3 的上限）
+   ! maxdepth       : 最大层级深度（0..maxdepth）
+   ! maxnccv        : 最大 CC 分量数上限（如 q 的通道数）
+   ! rootlevel      : 根层级编号（约定为 0）
+   ! sourcefield    : 泛型“字段选择器”常量：源项字段编号
+   ! solutionfield  : 泛型“字段选择器”常量：解场（solution）字段编号
+   ! auxiliaryfield : 泛型“字段选择器”常量：辅助场（aux）字段编号
+   LOGICAL, DIMENSION(0:maxdepth), PUBLIC:: defectivegridlevel   ! 标记各层是否存在不合规网格（需先修复）
+   INTEGER, PUBLIC:: amrrestarts, errortype, finestlevel, gridnumber, maxvcycles, &
+      maxlevel, mbc, minlevel, ndims, nmasscorrlayers, naxv, &
+      nccv, nfcv, nperiodicoffsets, nrootgrids, nsmoothingpasses, &
+      ntaggedcells, outframes, restartframe, timeiterations, &
+      totalmeshsize, updateauxfreq
+   ! amrrestarts        : AMR 重建重试计数（用于修复网格缺陷时回退重构）
+   ! errortype          : 误差度量类型（1=合成/混合 L2；2=分量级 L2 等）
+   ! finestlevel        : 当前构网后最细层级编号
+   ! gridnumber         : 调试/打印中使用的网格计数器
+   ! maxvcycles         : 每个时间步内最多执行的 V-cycle 次数
+   ! maxlevel           : 允许细化到的最大层级
+   ! mbc                : 幽灵层格点厚度（支持 1 或 2）
+   ! minlevel           : 多重网格的最粗层级（≤ 0，通常为 0 或负数作为 seed）
+   ! ndims              : 维度（2 或 3）
+   ! nmasscorrlayers    : 质量修正层（边带）链表的层数计数
+   ! naxv               : 辅助变量通道数（aux 的分量数）
+   ! nccv               : CC 变量通道数（q 的分量数）
+   ! nfcv               : FC 变量通道数（v1/v2/v3 的分量数）
+   ! nperiodicoffsets   : 周期性偏移向量的数量（每层）
+   ! nrootgrids         : 根层块数（当前实现通常为 1）
+   ! nsmoothingpasses   : 每层每次 LevelRelax 的平滑步（红黑各一次为 2）
+   ! ntaggedcells       : 被误差估计标记的单元数（用于 BR 分裂）
+   ! outframes          : 计划输出帧数（时间段内总帧数）
+   ! restartframe       : 重启时的起始帧编号
+   ! timeiterations     : 时间步总数（整体迭代次数）
+   ! totalmeshsize      : 合成网格尺寸（总单元数）
+   ! updateauxfreq      : V-cycle 内调用 UpdateAux 的频率（步数间隔）
+   INTEGER, DIMENSION(:), ALLOCATABLE, PUBLIC:: periodicoffsetindex   ! 周期偏移索引表（索引到 poffset 列表）
+   INTEGER, DIMENSION(0:maxdepth), PUBLIC:: errflagopt, ibuffer, minimumgridpoints
+   ! errflagopt(level)     : 每层误差标记策略选择（默认/用户）
+   ! ibuffer(level)        : 对被标记单元的缓冲层厚度（用于膨胀标记区域）
+   ! minimumgridpoints(L)  : 子块的最小尺寸（每维）约束
+   INTEGER, DIMENSION(:,:), ALLOCATABLE, PUBLIC:: poffset              ! 周期性偏移向量集合（ndims × nperiodicoffsets）
+   INTEGER, DIMENSION(0:maxdepth,1:maxdims), PUBLIC:: mxmax            ! 各层最大可能的网格尺寸（按 r=2 递推）
 !
-      REAL(KIND=r8), PUBLIC:: currenttime, dt, finaltime, omega, qerrortol, &
-            restarttime
-      ! currenttime  : 根层当前时间（等级间共享参考时间）
-      ! dt           : 时间步长（若 syncelliptic 初始同步阶段为 0.0）
-      ! finaltime    : 目标结束时间（基于帧数与 itperprint 推导）
-      ! omega        : 松弛因子（如 SOR/红黑 GS 的加权系数）
-      ! qerrortol    : 收敛阈值（误差度量的容差）
-      ! restarttime  : 重启时刻（读档恢复的时间）
-      REAL(KIND=r8), DIMENSION(1:2), PUBLIC:: integralresult   ! 统计量积累（例如质量/能量等 2 个指标的积分值）
-      REAL(KIND=r8), DIMENSION(1:maxnccv), PUBLIC:: componentintegral   ! 各 CC 分量的分量级积分统计
-      REAL(KIND=r8), DIMENSION(0:maxdepth), PUBLIC:: desiredfillratios, qtolerance
-      ! desiredfillratios(L) : 目标填充率（子块面积/标记区域）阈值，用于 BR 分裂停止准则
-      ! qtolerance(L)        : 误差标记/截断误差阈值（维度一致性见 2D/3D 处理）
+   REAL(KIND=r8), PUBLIC:: currenttime, dt, finaltime, omega, qerrortol, &
+      restarttime
+   ! currenttime  : 根层当前时间（等级间共享参考时间）
+   ! dt           : 时间步长（若 syncelliptic 初始同步阶段为 0.0）
+   ! finaltime    : 目标结束时间（基于帧数与 itperprint 推导）
+   ! omega        : 松弛因子（如 SOR/红黑 GS 的加权系数）
+   ! qerrortol    : 收敛阈值（误差度量的容差）
+   ! restarttime  : 重启时刻（读档恢复的时间）
+   REAL(KIND=r8), DIMENSION(1:2), PUBLIC:: integralresult   ! 统计量积累（例如质量/能量等 2 个指标的积分值）
+   REAL(KIND=r8), DIMENSION(1:maxnccv), PUBLIC:: componentintegral   ! 各 CC 分量的分量级积分统计
+   REAL(KIND=r8), DIMENSION(0:maxdepth), PUBLIC:: desiredfillratios, qtolerance
+   ! desiredfillratios(L) : 目标填充率（子块面积/标记区域）阈值，用于 BR 分裂停止准则
+   ! qtolerance(L)        : 误差标记/截断误差阈值（维度一致性见 2D/3D 处理）
 !
    TYPE, PUBLIC:: taggedcell
-            INTEGER:: id                                           ! 节点在链表中的递增 ID
-            INTEGER, DIMENSION(1:maxdims):: coordinate             ! 标记单元的全局坐标（按 coarse/coarse 对齐）
-            TYPE(taggedcell), POINTER:: prevcell                   ! 指向前一个标记单元（后进先出栈式链表）
+      INTEGER:: id                                           ! 节点在链表中的递增 ID
+      INTEGER, DIMENSION(1:maxdims):: coordinate             ! 标记单元的全局坐标（按 coarse/coarse 对齐）
+      TYPE(taggedcell), POINTER:: prevcell                   ! 指向前一个标记单元（后进先出栈式链表）
    END TYPE taggedcell
 !
-      TYPE(taggedcell), POINTER, PUBLIC:: zerothtaggedcell      ! 标记单元链表的哨兵/零节点
-      TYPE(taggedcell), POINTER, PUBLIC:: currenttaggedcell     ! 遍历/构造过程中的当前节点指针
-      TYPE(taggedcell), POINTER, PUBLIC:: lasttaggedcell        ! 链表尾（最新加入）的指针
+   TYPE(taggedcell), POINTER, PUBLIC:: zerothtaggedcell      ! 标记单元链表的哨兵/零节点
+   TYPE(taggedcell), POINTER, PUBLIC:: currenttaggedcell     ! 遍历/构造过程中的当前节点指针
+   TYPE(taggedcell), POINTER, PUBLIC:: lasttaggedcell        ! 链表尾（最新加入）的指针
 !
    TYPE, PUBLIC:: masscorrlayer
-            INTEGER:: id                                           ! 质量修正层的编号
-            INTEGER, DIMENSION(1:maxdims,1:2):: mg                 ! 修正条带在全局/局部的索引范围 [min,max]
-            REAL(KIND=r8), DIMENSION(:,:,:,:), POINTER:: masscorr  ! 质量修正的通量/累积数组（与 f/rf 同型）
-            TYPE(masscorrlayer), POINTER:: prevlayer               ! 指向上一层修正条带（链表）
+      INTEGER:: id                                           ! 质量修正层的编号
+      INTEGER, DIMENSION(1:maxdims,1:2):: mg                 ! 修正条带在全局/局部的索引范围 [min,max]
+      REAL(KIND=r8), DIMENSION(:,:,:,:), POINTER:: masscorr  ! 质量修正的通量/累积数组（与 f/rf 同型）
+      TYPE(masscorrlayer), POINTER:: prevlayer               ! 指向上一层修正条带（链表）
    END TYPE masscorrlayer
 !
-      TYPE(masscorrlayer), POINTER, PUBLIC:: zerothlayer        ! 质量修正链表的哨兵节点
-      TYPE(masscorrlayer), POINTER, PUBLIC:: currentlayer       ! 当前修正层指针
-      TYPE(masscorrlayer), POINTER, PUBLIC:: lastlayer          ! 最新的修正层指针
+   TYPE(masscorrlayer), POINTER, PUBLIC:: zerothlayer        ! 质量修正链表的哨兵节点
+   TYPE(masscorrlayer), POINTER, PUBLIC:: currentlayer       ! 当前修正层指针
+   TYPE(masscorrlayer), POINTER, PUBLIC:: lastlayer          ! 最新的修正层指针
 !
 ! Uniform grids used for restarting and output:
    TYPE, PUBLIC:: uniformgridtype
-            INTEGER, DIMENSION(1:maxdims):: mx                     ! 该层统一网格的尺寸（各维）
-            REAL(KIND=r8), DIMENSION(:,:,:,:), POINTER:: q         ! 统一网格上的 CC 场缓存（用于重启/统一输出）
+      INTEGER, DIMENSION(1:maxdims):: mx                     ! 该层统一网格的尺寸（各维）
+      REAL(KIND=r8), DIMENSION(:,:,:,:), POINTER:: q         ! 统一网格上的 CC 场缓存（用于重启/统一输出）
    END TYPE uniformgridtype
-      TYPE(uniformgridtype), DIMENSION(0:maxdepth), PUBLIC:: uniformgrid  ! 各层统一网格缓冲区
+   TYPE(uniformgridtype), DIMENSION(0:maxdepth), PUBLIC:: uniformgrid  ! 各层统一网格缓冲区
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !

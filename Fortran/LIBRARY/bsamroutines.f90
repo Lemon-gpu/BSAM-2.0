@@ -52,627 +52,627 @@
 ! Revision History: Ver. 1.1 May. 2007 Steven Wise
 ! Revision History: Ver. 2.0 Jul. 2015 Steven Wise
 ! -----------------------------------------------------------------------
-	MODULE BSAMRoutines
-IMPLICIT NONE
+MODULE BSAMRoutines
+   IMPLICIT NONE
 !
-SAVE
-PRIVATE
-PUBLIC BSAMSolver
+   SAVE
+   PRIVATE
+   PUBLIC BSAMSolver
 !
 CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE BSAMSolver
-USE NodeInfoDef
-USE TreeOps, ONLY: AddRootLevelNode, ApplyOnForest, ApplyOnLevel, &
-                   CreateBelowSeedLevels, DeleteMarkedNode, InitForest, &
-                   KillForest
-USE BSAMInputOutput, ONLY: ReadQ
-USE BSAMStorage, ONLY: DeallocPeriodicBCStorage
-USE Problem, ONLY: SetupProblem, AfterRun
-USE Boundary, ONLY: SetGhost
-IMPLICIT NONE
+   SUBROUTINE BSAMSolver
+      USE NodeInfoDef
+      USE TreeOps, ONLY: AddRootLevelNode, ApplyOnForest, ApplyOnLevel, &
+         CreateBelowSeedLevels, DeleteMarkedNode, InitForest, &
+         KillForest
+      USE BSAMInputOutput, ONLY: ReadQ
+      USE BSAMStorage, ONLY: DeallocPeriodicBCStorage
+      USE Problem, ONLY: SetupProblem, AfterRun
+      USE Boundary, ONLY: SetGhost
+      IMPLICIT NONE
 !
-TYPE(funcparam):: dummy
-CHARACTER(LEN=5):: zone
-CHARACTER(LEN=8):: date
-CHARACTER(LEN=10):: time
-INTEGER:: i, ierror, level, ilevel
-INTEGER, DIMENSION(1:8):: values
+      TYPE(funcparam):: dummy
+      CHARACTER(LEN=5):: zone
+      CHARACTER(LEN=8):: date
+      CHARACTER(LEN=10):: time
+      INTEGER:: i, ierror, level, ilevel
+      INTEGER, DIMENSION(1:8):: values
 !
-NAMELIST/rundata/dt, errortype, getafterstepstats, maxvcycles, &
-                 nsmoothingpasses, omega, outframes, outputuniformmesh, &
-                 qerrortol, restart, restartframe, syncelliptic, &
-                 timeiterations, updateauxfreq
+      NAMELIST/rundata/dt, errortype, getafterstepstats, maxvcycles, &
+         nsmoothingpasses, omega, outframes, outputuniformmesh, &
+         qerrortol, restart, restartframe, syncelliptic, &
+         timeiterations, updateauxfreq
 !
 ! Initializations:
-errortype = 1
+      errortype = 1
 !dt = 0.0001_r8
-getafterstepstats = .FALSE.
-maxvcycles = 20
-nsmoothingpasses = 2
-omega = 1.0_r8
-outframes = 1
-outputuniformmesh = .FALSE.
-qerrortol = 1.0E-06_r8
-restart = .FALSE.
-restartframe = 0
-syncelliptic = .FALSE.
-timeiterations = 1
-updateauxfreq = 1
+      getafterstepstats = .FALSE.
+      maxvcycles = 20
+      nsmoothingpasses = 2
+      omega = 1.0_r8
+      outframes = 1
+      outputuniformmesh = .FALSE.
+      qerrortol = 1.0E-06_r8
+      restart = .FALSE.
+      restartframe = 0
+      syncelliptic = .FALSE.
+      timeiterations = 1
+      updateauxfreq = 1
 !
 ! Read general input data:
-OPEN(UNIT=75,FILE='rundata.dat',STATUS='OLD',ACTION='READ',IOSTAT=ierror)
-IF(ierror/=0) THEN
-  PRINT *,'Error opening input file rundata.dat. Program stop.'
-  STOP
-END IF
-READ(UNIT=75,NML=rundata)
-CLOSE(75)
-  PRINT *,'dt', dt
+      OPEN(UNIT=75,FILE='rundata.dat',STATUS='OLD',ACTION='READ',IOSTAT=ierror)
+      IF(ierror/=0) THEN
+         PRINT *,'Error opening input file rundata.dat. Program stop.'
+         STOP
+      END IF
+      READ(UNIT=75,NML=rundata)
+      CLOSE(75)
+      PRINT *,'dt', dt
 !
-CALL DATE_AND_TIME(date,time,zone,values)
-OPEN(UNIT=76,FILE='output.dat',STATUS='UNKNOWN',ACTION='WRITE', &
-     FORM='FORMATTED',POSITION='APPEND')
-WRITE(76,1001) date, time
-1001 FORMAT(' '/'New run at date ',A8,' and time ',A10/' ')
-WRITE(76,NML=rundata)
-CLOSE(76)
+      CALL DATE_AND_TIME(date,time,zone,values)
+      OPEN(UNIT=76,FILE='output.dat',STATUS='UNKNOWN',ACTION='WRITE', &
+         FORM='FORMATTED',POSITION='APPEND')
+      WRITE(76,1001) date, time
+1001  FORMAT(' '/'New run at date ',A8,' and time ',A10/' ')
+      WRITE(76,NML=rundata)
+      CLOSE(76)
 !
 ! By default only one rootlevel grid.  This may change in the future:
-nrootgrids = 1
+      nrootgrids = 1
 !
 ! Initialize a forest of trees.  One root level grid generated in this call:
-CALL InitForest
+      CALL InitForest
 !
 ! Read data file to initialize root level grids:
-CALL ApplyOnLevel(rootlevel,RootInit,dummy)
+      CALL ApplyOnLevel(rootlevel,RootInit,dummy)
 !
 ! Create the levels below the seed needed for multigrid:
-CALL CreateBelowSeedLevels(minlevel)
+      CALL CreateBelowSeedLevels(minlevel)
 !
 ! Initialize the levels below the forest seed:
-DO ilevel = rootlevel-1, minlevel, -1
-  CALL ApplyOnLevel(ilevel,InitSeed,dummy)
-END DO
+      DO ilevel = rootlevel-1, minlevel, -1
+         CALL ApplyOnLevel(ilevel,InitSeed,dummy)
+      END DO
 !
 ! Set user problem parameters:
-CALL SetupProblem
-  PRINT *,'dt', dt
+      CALL SetupProblem
+      PRINT *,'dt', dt
 !
 ! Initialize the rootlevel data fields.  In the case of a restart, we read the
 ! fields at all above root levels, saving the data to uniformgrid(level)%q':
-IF(restart) THEN
-  PRINT *, 'Restart of computation from plot frame ', restartframe
-  CALL ReadQ
-  outputinitialdata = .FALSE.
-  syncelliptic = .FALSE.
-ELSE
-  CALL ApplyOnLevel(rootlevel,InitializeFields,dummy)
-  outputinitialdata = .TRUE.
-END IF
+      IF(restart) THEN
+         PRINT *, 'Restart of computation from plot frame ', restartframe
+         CALL ReadQ
+         outputinitialdata = .FALSE.
+         syncelliptic = .FALSE.
+      ELSE
+         CALL ApplyOnLevel(rootlevel,InitializeFields,dummy)
+         outputinitialdata = .TRUE.
+      END IF
 !
-CALL SetGhost(rootlevel,0)
-CALL ApplyOnLevel(rootlevel,SetAuxFields,dummy)
-CALL ApplyOnLevel(rootlevel,SetSrcFields,dummy)
-CALL ApplyOnLevel(rootlevel,CopyQToQold,dummy)
+      CALL SetGhost(rootlevel,0)
+      CALL ApplyOnLevel(rootlevel,SetAuxFields,dummy)
+      CALL ApplyOnLevel(rootlevel,SetSrcFields,dummy)
+      CALL ApplyOnLevel(rootlevel,CopyQToQold,dummy)
 !
 ! Initialization complete. Start run:
-PRINT *, 'BSAM 2.0 is running ... '
-PRINT *, ' '
+      PRINT *, 'BSAM 2.0 is running ... '
+      PRINT *, ' '
 !
-  PRINT *,'dt', dt
+      PRINT *,'dt', dt
 ! Carry out the time steps:
-CALL TakeTimeSteps
+      CALL TakeTimeSteps
 !
-  PRINT *,'dt', dt
+      PRINT *,'dt', dt
 ! User-specified actions before program ends:
-CALL AfterRun
+      CALL AfterRun
 !
 ! Delete the below-seed-level grids:
-DO level = minlevel, maxlevel
-  CALL ApplyOnLevel(level,MarkNodeInactive,dummy)
-  CALL ApplyOnLevel(level,ReleaseInactiveFields,dummy)
-  PRINT *,' Level ',level,' fields have been released.'
-END DO
+      DO level = minlevel, maxlevel
+         CALL ApplyOnLevel(level,MarkNodeInactive,dummy)
+         CALL ApplyOnLevel(level,ReleaseInactiveFields,dummy)
+         PRINT *,' Level ',level,' fields have been released.'
+      END DO
 !
 ! Delete the forest of trees:
-CALL KillForest
+      CALL KillForest
 !
 ! Delete forest seed and below-seed levels:
-CALL ApplyOnLevel(minlevel,MarkNodeToBeDeleted,dummy)
-CALL ApplyOnLevel(minlevel,DeleteMarkedNode,dummy)
+      CALL ApplyOnLevel(minlevel,MarkNodeToBeDeleted,dummy)
+      CALL ApplyOnLevel(minlevel,DeleteMarkedNode,dummy)
 !
-CALL DeallocPeriodicBCStorage
+      CALL DeallocPeriodicBCStorage
 !
-END SUBROUTINE BSAMSolver
+   END SUBROUTINE BSAMSolver
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION MarkNodeToBeDeleted(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION MarkNodeToBeDeleted(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-MarkNodeToBeDeleted = err_ok
+      MarkNodeToBeDeleted = err_ok
 !
-info%tobedeleted = .TRUE.
+      info%tobedeleted = .TRUE.
 !
-END FUNCTION MarkNodeToBeDeleted
+   END FUNCTION MarkNodeToBeDeleted
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION MarkNodeInactive(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION MarkNodeInactive(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-MarkNodeInactive = err_ok
+      MarkNodeInactive = err_ok
 !
-info%activegrid = .FALSE.
+      info%activegrid = .FALSE.
 !
-END FUNCTION MarkNodeInactive
+   END FUNCTION MarkNodeInactive
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION MarkNodeNonInitial(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION MarkNodeNonInitial(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-MarkNodeNonInitial = err_ok
+      MarkNodeNonInitial = err_ok
 !
-info%initialgrid = .FALSE.
+      info%initialgrid = .FALSE.
 !
-END FUNCTION MarkNodeNonInitial
+   END FUNCTION MarkNodeNonInitial
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION RootInit(rootinfo,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-USE Boundary, ONLY: PeriodicSetup
-USE BSAMStorage, ONLY: AllocFields
-IMPLICIT NONE
+   INTEGER FUNCTION RootInit(rootinfo,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      USE Boundary, ONLY: PeriodicSetup
+      USE BSAMStorage, ONLY: AllocFields
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: rootinfo
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: rootinfo
+      TYPE(funcparam):: dummy
 !
-CHARACTER(LEN=12):: filename
-INTEGER:: i, ierror, n
-INTEGER, DIMENSION(1:maxdims):: mx
-INTEGER, DIMENSION(1:2*maxdims):: mthbc
-INTEGER, DIMENSION(1:maxdims,1:2):: mglobal
-REAL(KIND=r8), DIMENSION(1:maxdims):: dx, xlower, xupper
+      CHARACTER(LEN=12):: filename
+      INTEGER:: i, ierror, n
+      INTEGER, DIMENSION(1:maxdims):: mx
+      INTEGER, DIMENSION(1:2*maxdims):: mthbc
+      INTEGER, DIMENSION(1:maxdims,1:2):: mglobal
+      REAL(KIND=r8), DIMENSION(1:maxdims):: dx, xlower, xupper
 !
-NAMELIST/griddata/desiredfillratios, errflagopt, ibuffer, maxlevel, mbc, &
-                  mglobal, minimumgridpoints, minlevel, mthbc, mx, ndims, &
-                  naxv, nccv, nfcv, qtolerance, xlower, xupper
+      NAMELIST/griddata/desiredfillratios, errflagopt, ibuffer, maxlevel, mbc, &
+         mglobal, minimumgridpoints, minlevel, mthbc, mx, ndims, &
+         naxv, nccv, nfcv, qtolerance, xlower, xupper
 !
-PRINT *, 'Reading grid data for root-level grid.'
+      PRINT *, 'Reading grid data for root-level grid.'
 !
 ! Set default values !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-desiredfillratios = 8.0E-01_r8
-errflagopt = errflagdefault
-ibuffer = 0
-maxlevel = 0
-mbc = 1
-mglobal = 1
-minimumgridpoints = 2
-minlevel = 0
-mthbc = 10
-mx = 1
-ndims = 2
-naxv = 0
-nccv = 1
-nfcv = 0
-qtolerance = 1.0E-06_r8
-xlower = 0.0_r8
-xupper = 1.0_r8
+      desiredfillratios = 8.0E-01_r8
+      errflagopt = errflagdefault
+      ibuffer = 0
+      maxlevel = 0
+      mbc = 1
+      mglobal = 1
+      minimumgridpoints = 2
+      minlevel = 0
+      mthbc = 10
+      mx = 1
+      ndims = 2
+      naxv = 0
+      nccv = 1
+      nfcv = 0
+      qtolerance = 1.0E-06_r8
+      xlower = 0.0_r8
+      xupper = 1.0_r8
 !
 ! Read from namelist !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-OPEN(UNIT=75,FILE='griddata.dat',STATUS='OLD',ACTION='READ',IOSTAT=ierror)
-IF(ierror/=0) THEN
-  PRINT *,'Error opening input file griddata.dat. Program stop.'
-  STOP
-END IF
-READ(75,NML=griddata)
-CLOSE(75)
-OPEN(UNIT=76,FILE='output.dat',STATUS='OLD',ACTION='WRITE',FORM='FORMATTED', &
-     POSITION='APPEND')
-WRITE(76,NML=griddata)
-CLOSE(76)
+      OPEN(UNIT=75,FILE='griddata.dat',STATUS='OLD',ACTION='READ',IOSTAT=ierror)
+      IF(ierror/=0) THEN
+         PRINT *,'Error opening input file griddata.dat. Program stop.'
+         STOP
+      END IF
+      READ(75,NML=griddata)
+      CLOSE(75)
+      OPEN(UNIT=76,FILE='output.dat',STATUS='OLD',ACTION='WRITE',FORM='FORMATTED', &
+         POSITION='APPEND')
+      WRITE(76,NML=griddata)
+      CLOSE(76)
 !
 ! Check input variables !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-IF(ANY(desiredfillratios<0.0) .OR. ANY(desiredfillratios>1.0)) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports desiredfilratios between 0 and 1.'
-  STOP
-END IF
+      IF(ANY(desiredfillratios<0.0) .OR. ANY(desiredfillratios>1.0)) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports desiredfilratios between 0 and 1.'
+         STOP
+      END IF
 !
-IF(ANY(ibuffer<0)) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports ibuffers>=0.'
-  STOP
-END IF
+      IF(ANY(ibuffer<0)) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports ibuffers>=0.'
+         STOP
+      END IF
 !
-IF(maxlevel<0) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports maxlevel>=0.'
-  STOP
-END IF
+      IF(maxlevel<0) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports maxlevel>=0.'
+         STOP
+      END IF
 !
-IF(naxv<0) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports naxv>=0.'
-  STOP
-END IF
+      IF(naxv<0) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports naxv>=0.'
+         STOP
+      END IF
 !
-IF(mbc<1 .OR. mbc>2) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports mbc=1,2.'
-  STOP
-END IF
+      IF(mbc<1 .OR. mbc>2) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports mbc=1,2.'
+         STOP
+      END IF
 !
-IF(minlevel>0) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports minlevel<=0.'
-  STOP
-END IF
+      IF(minlevel>0) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports minlevel<=0.'
+         STOP
+      END IF
 !
-IF(ndims<2 .OR. ndims>3) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports ndims=2,3.'
-  STOP
-END IF
+      IF(ndims<2 .OR. ndims>3) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports ndims=2,3.'
+         STOP
+      END IF
 !
-DO i = 1, 2*ndims-1, 2
-  IF(nrootgrids==1 .AND. &
-    mthbc(i)==2 .AND. mthbc(i+1)/=2) THEN
-    PRINT *, 'BSAM 2.0 Error: Incorrect periodic boundary conditions.'
-    STOP 
-  END IF
-  IF(nrootgrids==1 .AND. &
-    mthbc(i+1)==2 .AND. mthbc(i)/=2) THEN
-    PRINT *, 'BSAM 2.0 Error: Incorrect periodic boundary conditions.'
-    STOP
-  END IF
-END DO
+      DO i = 1, 2*ndims-1, 2
+         IF(nrootgrids==1 .AND. &
+            mthbc(i)==2 .AND. mthbc(i+1)/=2) THEN
+            PRINT *, 'BSAM 2.0 Error: Incorrect periodic boundary conditions.'
+            STOP
+         END IF
+         IF(nrootgrids==1 .AND. &
+            mthbc(i+1)==2 .AND. mthbc(i)/=2) THEN
+            PRINT *, 'BSAM 2.0 Error: Incorrect periodic boundary conditions.'
+            STOP
+         END IF
+      END DO
 !
-DO i = 1, ndims
-  IF(mx(i)<=0) THEN
-    PRINT *, 'BSAM 2.0 Error: mx<=0 along dim', i, '.'
-    STOP
-  END IF
-END DO
+      DO i = 1, ndims
+         IF(mx(i)<=0) THEN
+            PRINT *, 'BSAM 2.0 Error: mx<=0 along dim', i, '.'
+            STOP
+         END IF
+      END DO
 !
-DO i = 1, ndims
-  IF(MODULO(mx(i),2)/=0) THEN
-    PRINT *, 'BSAM 2.0 Error: Initial grid must have dimensions which are a multiple'
-    PRINT *, '       of the refinement ratio 2.'
-    STOP
-  END IF
-END DO
+      DO i = 1, ndims
+         IF(MODULO(mx(i),2)/=0) THEN
+            PRINT *, 'BSAM 2.0 Error: Initial grid must have dimensions which are a multiple'
+            PRINT *, '       of the refinement ratio 2.'
+            STOP
+         END IF
+      END DO
 !
-DO i = 1, ndims
-  IF(mglobal(i,2)-mglobal(i,1)+1/=mx(i)) THEN
-    PRINT *, 'BSAM 2.0 Error: mglobal(i,2)-mglobal(i,1)+1/=mx(i), i=', i, '.'
-    STOP
-  END IF
-END DO
+      DO i = 1, ndims
+         IF(mglobal(i,2)-mglobal(i,1)+1/=mx(i)) THEN
+            PRINT *, 'BSAM 2.0 Error: mglobal(i,2)-mglobal(i,1)+1/=mx(i), i=', i, '.'
+            STOP
+         END IF
+      END DO
 !
-IF(ANY(minimumgridpoints<1)) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports minimumgridpoints>=1.'
-  STOP
-END IF
+      IF(ANY(minimumgridpoints<1)) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports minimumgridpoints>=1.'
+         STOP
+      END IF
 !
-IF(nccv>maxnccv .OR. nccv<1) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports nccv<=maxnccv and nccv>=1.'
-  STOP
-END IF
+      IF(nccv>maxnccv .OR. nccv<1) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports nccv<=maxnccv and nccv>=1.'
+         STOP
+      END IF
 !
-IF(ANY(qtolerance<=0.0)) THEN
-  PRINT *, 'BSAM 2.0 Error: Code only supports qtolerance>0.0.'
-  STOP
-END IF
+      IF(ANY(qtolerance<=0.0)) THEN
+         PRINT *, 'BSAM 2.0 Error: Code only supports qtolerance>0.0.'
+         STOP
+      END IF
 !
-DO i = 1, ndims
-  IF(xupper(i)<=xlower(i)) THEN
-    PRINT *, 'BSAM 2.0 Error: Code only supports xupper > xlower.'
-    STOP
-  END IF
-END DO
+      DO i = 1, ndims
+         IF(xupper(i)<=xlower(i)) THEN
+            PRINT *, 'BSAM 2.0 Error: Code only supports xupper > xlower.'
+            STOP
+         END IF
+      END DO
 !
-dx = 0.0_r8
-dx(1:ndims) = (xupper(1:ndims)-xlower(1:ndims))/REAL(mx(1:ndims),KIND=r8)
+      dx = 0.0_r8
+      dx(1:ndims) = (xupper(1:ndims)-xlower(1:ndims))/REAL(mx(1:ndims),KIND=r8)
 !
-DO i = 2, ndims
-  IF(ABS(dx(1)-dx(i))>1.0E-10_r8) THEN
-    PRINT *, 'BSAM 2.0 Error: dx(1)\=dx(i) along dim', i, '.'
-    STOP
-  END IF
-END DO
+      DO i = 2, ndims
+         IF(ABS(dx(1)-dx(i))>1.0E-10_r8) THEN
+            PRINT *, 'BSAM 2.0 Error: dx(1)\=dx(i) along dim', i, '.'
+            STOP
+         END IF
+      END DO
 !
-mxmax = 1; mxmax(0,1:ndims) = mx(1:ndims)
-DO i = rootlevel+1, maxlevel
-  mxmax(i,1:ndims) = 2*mxmax(i-1,1:ndims)
-END DO
+      mxmax = 1; mxmax(0,1:ndims) = mx(1:ndims)
+      DO i = rootlevel+1, maxlevel
+         mxmax(i,1:ndims) = 2*mxmax(i-1,1:ndims)
+      END DO
 !
 ! Copy data to global storage !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-rootinfo%ngrid = 0
-rootinfo%level = rootlevel
-rootinfo%maxlevel = maxlevel
+      rootinfo%ngrid = 0
+      rootinfo%level = rootlevel
+      rootinfo%maxlevel = maxlevel
 !
-rootinfo%tobedeleted = .FALSE.
-rootinfo%initialgrid = .TRUE.
-rootinfo%activegrid = .TRUE.
-rootinfo%defective = .FALSE.
+      rootinfo%tobedeleted = .FALSE.
+      rootinfo%initialgrid = .TRUE.
+      rootinfo%activegrid = .TRUE.
+      rootinfo%defective = .FALSE.
 !
-rootinfo%mx = 1
-rootinfo%mx(1:ndims) = mx(1:ndims)
-rootinfo%mglobal = 1
-rootinfo%mglobal(1:ndims,1:2) = mglobal(1:ndims,1:2)
+      rootinfo%mx = 1
+      rootinfo%mx(1:ndims) = mx(1:ndims)
+      rootinfo%mglobal = 1
+      rootinfo%mglobal(1:ndims,1:2) = mglobal(1:ndims,1:2)
 !
-rootinfo%gridtime = 0.0_r8
+      rootinfo%gridtime = 0.0_r8
 !
-rootinfo%xlower = 0.0_r8
-rootinfo%xlower(1:ndims) = xlower(1:ndims)
-rootinfo%xupper = 0.0_r8
-rootinfo%xupper(1:ndims) = xupper(1:ndims)
-rootinfo%dx = 0.0_r8
-rootinfo%dx(1:ndims) = dx(1:ndims)
-rootinfo%mthbc = 10
-rootinfo%mthbc(1:2*ndims) = mthbc(1:2*ndims)
+      rootinfo%xlower = 0.0_r8
+      rootinfo%xlower(1:ndims) = xlower(1:ndims)
+      rootinfo%xupper = 0.0_r8
+      rootinfo%xupper(1:ndims) = xupper(1:ndims)
+      rootinfo%dx = 0.0_r8
+      rootinfo%dx(1:ndims) = dx(1:ndims)
+      rootinfo%mthbc = 10
+      rootinfo%mthbc(1:2*ndims) = mthbc(1:2*ndims)
 !
-rootinfo%mbounds = 1; rootinfo%mbounds(1:ndims,2) = rootinfo%mx(1:ndims)
+      rootinfo%mbounds = 1; rootinfo%mbounds(1:ndims,2) = rootinfo%mx(1:ndims)
 !
 ! Allocate storage !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Set up the periodic offsets used in transferring periodic bc's:
-CALL PeriodicSetup(rootinfo)
+      CALL PeriodicSetup(rootinfo)
 !
-CALL AllocFields(rootinfo)
+      CALL AllocFields(rootinfo)
 !
-rootinfo%levellandscape = 0
+      rootinfo%levellandscape = 0
 !
 ! Finished initialization of root node info structure
-RootInit = err_ok
+      RootInit = err_ok
 !
-PRINT *, 'Finished reading root-level grid data.'
+      PRINT *, 'Finished reading root-level grid data.'
 !
-END FUNCTION RootInit
+   END FUNCTION RootInit
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION InitSeed(seedinfo,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok, GetChildInfo
-USE BSAMStorage, ONLY: AllocFields
-IMPLICIT NONE
+   INTEGER FUNCTION InitSeed(seedinfo,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok, GetChildInfo
+      USE BSAMStorage, ONLY: AllocFields
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: seedinfo
-TYPE(funcparam) :: dummy
+      TYPE(nodeinfo):: seedinfo
+      TYPE(funcparam) :: dummy
 !
-TYPE(nodeinfo), POINTER:: child   
-INTEGER:: ierror, level
+      TYPE(nodeinfo), POINTER:: child
+      INTEGER:: ierror, level
 !
 ! Only data needed for multigrid need be copied from the child grid.  Parent
 ! (seedinfo) is born from child:
 !
-ierror = GetChildInfo(child)
+      ierror = GetChildInfo(child)
 !
-level = child%level-1
+      level = child%level-1
 !
-seedinfo%maxlevel = maxlevel
-seedinfo%level = level
+      seedinfo%maxlevel = maxlevel
+      seedinfo%level = level
 !
-PRINT *, 'level=', level, 'ndims=', ndims
+      PRINT *, 'level=', level, 'ndims=', ndims
 !
-IF(ANY(MODULO(child%mx(1:ndims),2)/=0)) THEN
-  PRINT *, 'BSAM 2.0 Error in InitSeed: grid on level', child%level, 'will not coarsen.'
-  STOP
-END IF
+      IF(ANY(MODULO(child%mx(1:ndims),2)/=0)) THEN
+         PRINT *, 'BSAM 2.0 Error in InitSeed: grid on level', child%level, 'will not coarsen.'
+         STOP
+      END IF
 !
-seedinfo%mx(1:ndims) = child%mx(1:ndims)/2
-seedinfo%dx(1:ndims) = child%dx(1:ndims)*REAL(2,KIND=r8)
-seedinfo%mglobal(1:ndims,1) = 1
-seedinfo%mglobal(1:ndims,2) = child%mglobal(1:ndims,2)/2
-child%mbounds(1:ndims,1) = 1; child%mbounds(1:ndims,2) = seedinfo%mx(1:ndims)
+      seedinfo%mx(1:ndims) = child%mx(1:ndims)/2
+      seedinfo%dx(1:ndims) = child%dx(1:ndims)*REAL(2,KIND=r8)
+      seedinfo%mglobal(1:ndims,1) = 1
+      seedinfo%mglobal(1:ndims,2) = child%mglobal(1:ndims,2)/2
+      child%mbounds(1:ndims,1) = 1; child%mbounds(1:ndims,2) = seedinfo%mx(1:ndims)
 !
-seedinfo%mbounds(1:ndims,1) = 1; seedinfo%mbounds(1:ndims,2) = seedinfo%mx(1:ndims)
+      seedinfo%mbounds(1:ndims,1) = 1; seedinfo%mbounds(1:ndims,2) = seedinfo%mx(1:ndims)
 !
-IF(ANY(seedinfo%mx(1:ndims)/=seedinfo%mglobal(1:ndims,2))) THEN
-  PRINT *, 'BSAM 2.0 Error in InitSeed: on level-1', seedinfo%level
-  PRINT *, 'mx(:)/=mglobal(:,2)'
-  STOP
-END IF
+      IF(ANY(seedinfo%mx(1:ndims)/=seedinfo%mglobal(1:ndims,2))) THEN
+         PRINT *, 'BSAM 2.0 Error in InitSeed: on level-1', seedinfo%level
+         PRINT *, 'mx(:)/=mglobal(:,2)'
+         STOP
+      END IF
 !
-seedinfo%ngrid = 0
+      seedinfo%ngrid = 0
 !
-seedinfo%tobedeleted = .FALSE.; seedinfo%level = child%level-1
-seedinfo%initialgrid = .FALSE.
-seedinfo%activegrid = .TRUE.
-seedinfo%defective = .FALSE.
+      seedinfo%tobedeleted = .FALSE.; seedinfo%level = child%level-1
+      seedinfo%initialgrid = .FALSE.
+      seedinfo%activegrid = .TRUE.
+      seedinfo%defective = .FALSE.
 !
-seedinfo%gridtime = child%gridtime
+      seedinfo%gridtime = child%gridtime
 !
-seedinfo%xlower = child%xlower; seedinfo%xupper = child%xupper
-seedinfo%mthbc = child%mthbc
+      seedinfo%xlower = child%xlower; seedinfo%xupper = child%xupper
+      seedinfo%mthbc = child%mthbc
 !
-CALL AllocFields(seedinfo)
+      CALL AllocFields(seedinfo)
 !
 ! Finished initialization of seed node info structure:
-InitSeed = err_ok
+      InitSeed = err_ok
 !
-END FUNCTION InitSeed
+   END FUNCTION InitSeed
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION SetAuxFields(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-USE Problem, ONLY: SetAux
-IMPLICIT NONE
+   INTEGER FUNCTION SetAuxFields(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      USE Problem, ONLY: SetAux
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-SetAuxFields = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      SetAuxFields = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-IF(naxv>0) CALL SetAux(info)
+      IF(naxv>0) CALL SetAux(info)
 !
-END FUNCTION SetAuxFields
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
-!
-INTEGER FUNCTION SetSrcFields(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-USE Problem, ONLY: SetSrc
-IMPLICIT NONE
-!
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
-!
-SetSrcFields = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
-!
-CALL SetSrc(info)
-!
-END FUNCTION SetSrcFields
+   END FUNCTION SetAuxFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION InitializeFields(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION SetSrcFields(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      USE Problem, ONLY: SetSrc
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-InitializeFields = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      SetSrcFields = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-CALL Initialize(info)
+      CALL SetSrc(info)
 !
-END FUNCTION InitializeFields
+   END FUNCTION SetSrcFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE Initialize(info)
-USE NodeInfoDef
-USE PROBLEM, ONLY: Initialize2D, Initialize3D
-IMPLICIT NONE
+   INTEGER FUNCTION InitializeFields(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER, DIMENSION(1:maxdims):: mx
-REAL(KIND=r8):: h
-REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
+      InitializeFields = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-mx(1:ndims) = info%mx(1:ndims)
-h = info%dx(1)
-xlower(1:ndims) = info%xlower(1:ndims)
+      CALL Initialize(info)
 !
-SELECT CASE(ndims)
-  CASE(2)
-    CALL Initialize2D(info%q (1:mx(1),1:mx(2),1      ,1:nccv), &
-                      info%v1(0:mx(1),1:mx(2),1      ,1:nfcv), &
-                      info%v2(1:mx(1),0:mx(2),1      ,1:nfcv), &
-                      mx(1:2),h,xlower(1:2))
-  CASE(3)
-    CALL Initialize3D(info%q (1:mx(1),1:mx(2),1:mx(3),1:nccv), &
-                      info%v1(0:mx(1),1:mx(2),1:mx(3),1:nfcv), &
-                      info%v2(1:mx(1),0:mx(2),1:mx(3),1:nfcv), &
-                      info%v3(1:mx(1),1:mx(2),0:mx(3),1:nfcv), &
-                      mx(1:3),h,xlower(1:3))
-END SELECT
-!
-END SUBROUTINE Initialize
+   END FUNCTION InitializeFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION CopyQToQold(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   SUBROUTINE Initialize(info)
+      USE NodeInfoDef
+      USE PROBLEM, ONLY: Initialize2D, Initialize3D
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
 !
-CopyQToQold = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      INTEGER, DIMENSION(1:maxdims):: mx
+      REAL(KIND=r8):: h
+      REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
 !
-SELECT CASE(ndims)
-  CASE(2)
-			info% qold = info%q
-			info%qcold = info%qc
+      mx(1:ndims) = info%mx(1:ndims)
+      h = info%dx(1)
+      xlower(1:ndims) = info%xlower(1:ndims)
 !
-			info%v1old = info%v1
-			info%v2old = info%v2
-  CASE(3)
-			info% qold = info%q
-            info%qcold = info%qc
+      SELECT CASE(ndims)
+       CASE(2)
+         CALL Initialize2D(info%q (1:mx(1),1:mx(2),1      ,1:nccv), &
+            info%v1(0:mx(1),1:mx(2),1      ,1:nfcv), &
+            info%v2(1:mx(1),0:mx(2),1      ,1:nfcv), &
+            mx(1:2),h,xlower(1:2))
+       CASE(3)
+         CALL Initialize3D(info%q (1:mx(1),1:mx(2),1:mx(3),1:nccv), &
+            info%v1(0:mx(1),1:mx(2),1:mx(3),1:nfcv), &
+            info%v2(1:mx(1),0:mx(2),1:mx(3),1:nfcv), &
+            info%v3(1:mx(1),1:mx(2),0:mx(3),1:nfcv), &
+            mx(1:3),h,xlower(1:3))
+      END SELECT
 !
-			info%v1old = info%v1
-			info%v2old = info%v2
-			info%v3old = info%v3
-END SELECT
-!
-END FUNCTION CopyQToQold
+   END SUBROUTINE Initialize
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE TakeTimeSteps
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode
-USE BSAMInputOutput, ONLY: WriteQ, WriteUniformMeshQ
-USE AFASRoutines, ONLY: FillDown, MultigridIterations
-IMPLICIT NONE
+   INTEGER FUNCTION CopyQToQold(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
+!
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
+!
+      CopyQToQold = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+!
+      SELECT CASE(ndims)
+       CASE(2)
+         info% qold = info%q
+         info%qcold = info%qc
+!
+         info%v1old = info%v1
+         info%v2old = info%v2
+       CASE(3)
+         info% qold = info%q
+         info%qcold = info%qc
+!
+         info%v1old = info%v1
+         info%v2old = info%v2
+         info%v3old = info%v3
+      END SELECT
+!
+   END FUNCTION CopyQToQold
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+   SUBROUTINE TakeTimeSteps
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode
+      USE BSAMInputOutput, ONLY: WriteQ, WriteUniformMeshQ
+      USE AFASRoutines, ONLY: FillDown, MultigridIterations
+      IMPLICIT NONE
 !
 ! currenttime is the time of the rootlevel grid.
 ! restarttime is the time at restart.
 ! finaltime is the calculated final time.
 !
-TYPE(funcparam):: dummy
-LOGICAL:: firstamr
-INTEGER:: firstframe, it, itperprint, lastframe, level, n
-REAL(KIND=r8):: starttime, dtsave
+      TYPE(funcparam):: dummy
+      LOGICAL:: firstamr
+      INTEGER:: firstframe, it, itperprint, lastframe, level, n
+      REAL(KIND=r8):: starttime, dtsave
 !
-dtsave = dt
+      dtsave = dt
 !
-IF(restart) THEN
-  IF(restartframe>=outframes) THEN
-    PRINT *, 'BSAM 2.0 Error in rundata.dat: outframes=', outframes, ' restartframe=', &
-             restartframe
-    PRINT *, 'outframes must be greater than restartframe.'
-    STOP
-  END IF
+      IF(restart) THEN
+         IF(restartframe>=outframes) THEN
+            PRINT *, 'BSAM 2.0 Error in rundata.dat: outframes=', outframes, ' restartframe=', &
+               restartframe
+            PRINT *, 'outframes must be greater than restartframe.'
+            STOP
+         END IF
 !
-  currenttime = restarttime
-  firstframe = restartframe+1; lastframe = outframes
+         currenttime = restarttime
+         firstframe = restartframe+1; lastframe = outframes
 !
-  PRINT 1002, restartframe, outframes
-  1002 FORMAT('================================================'/ &
-              ' BSAM 2.0: Restart frame ', i4,' out of ', i4,' requested frames'/ &
-              '================================================')
-ELSE
-  currenttime = 0.0_r8
-  firstframe = 1; lastframe = outframes
-  IF(syncelliptic) THEN
-    dt = 0.0_r8
-  END IF
-END IF
+         PRINT 1002, restartframe, outframes
+1002     FORMAT('================================================'/ &
+            ' BSAM 2.0: Restart frame ', i4,' out of ', i4,' requested frames'/ &
+            '================================================')
+      ELSE
+         currenttime = 0.0_r8
+         firstframe = 1; lastframe = outframes
+         IF(syncelliptic) THEN
+            dt = 0.0_r8
+         END IF
+      END IF
 !
-itperprint = timeiterations/outframes
+      itperprint = timeiterations/outframes
 !
-starttime = currenttime
-finaltime = starttime &
-          + REAL((lastframe-firstframe+1)*itperprint,KIND=r8)*dtsave
+      starttime = currenttime
+      finaltime = starttime &
+         + REAL((lastframe-firstframe+1)*itperprint,KIND=r8)*dtsave
 !
-firstamr = .TRUE.
+      firstamr = .TRUE.
 !
-printloop: DO n = firstframe, lastframe
+      printloop: DO n = firstframe, lastframe
 !
-  it = 1
-  timesteploop: DO
+         it = 1
+         timesteploop: DO
 !
 ! For testing purposes only:
 !
@@ -685,80 +685,80 @@ printloop: DO n = firstframe, lastframe
 !    END DO
 !
 ! Mark all above-root-level grids from the old mesh inactive:
-    DO level = rootlevel+1, maxlevel
-      CALL ApplyOnLevel(level,MarkNodeInactive,dummy)
-    END DO
+            DO level = rootlevel+1, maxlevel
+               CALL ApplyOnLevel(level,MarkNodeInactive,dummy)
+            END DO
 !
 ! Make a new mesh and move the solution to the new mesh:
-    finestlevel = rootlevel
-    defectivegridlevel(0:maxlevel) = .FALSE.
-    amrrestarts = 0; meshbuildcomplete = .FALSE.
+            finestlevel = rootlevel
+            defectivegridlevel(0:maxlevel) = .FALSE.
+            amrrestarts = 0; meshbuildcomplete = .FALSE.
 !
-    CALL AMR(rootlevel)
+            CALL AMR(rootlevel)
 !
 ! After exit from AMR delete all inactive grids (the previous mesh):
-    meshbuildcomplete = .TRUE.
-    DO level = maxlevel, rootlevel+1, -1
-      CALL ApplyOnLevel(level,ReleaseInactiveFields,dummy)
-      CALL ApplyOnLevel(level,DeleteMarkedNode,dummy)
-    END DO
+            meshbuildcomplete = .TRUE.
+            DO level = maxlevel, rootlevel+1, -1
+               CALL ApplyOnLevel(level,ReleaseInactiveFields,dummy)
+               CALL ApplyOnLevel(level,DeleteMarkedNode,dummy)
+            END DO
 !
 ! This ensures that the below rootlevel values of qold are filled after a
 ! clean start or restart:
-    IF(firstamr) THEN
-      CALL FillDown(solutionfield)
-      firstamr = .FALSE.
-      CALL ApplyOnLevel(rootlevel,MarkNodeNonInitial,dummy)
-    END IF
+            IF(firstamr) THEN
+               CALL FillDown(solutionfield)
+               firstamr = .FALSE.
+               CALL ApplyOnLevel(rootlevel,MarkNodeNonInitial,dummy)
+            END IF
 !
 ! Save a copy of data at the last time step:
-    DO level = minlevel, finestlevel
-      CALL ApplyOnLevel(level,CopyQToQold,dummy)
-    END DO
+            DO level = minlevel, finestlevel
+               CALL ApplyOnLevel(level,CopyQToQold,dummy)
+            END DO
 !
 ! If initial grid, write data:
-    IF(outputinitialdata .AND. (.NOT. syncelliptic)) THEN
+            IF(outputinitialdata .AND. (.NOT. syncelliptic)) THEN
 !
-      outputinitialdata = .FALSE.
-      PRINT 799
-      799 FORMAT('==============================='/ &
-                 ' BSAM 2.0: Writing initial data'/ &
-                 '===============================')
-      IF(getafterstepstats) THEN
-        integralresult = 0.0_r8
-        totalmeshsize = 0
-        DO level = finestlevel, rootlevel, -1
-          CALL ApplyOnLevel(level,AfterStepStatistics,dummy)
-          CALL ApplyOnLevel(level,GetMeshSize,dummy)
-        END DO
-        OPEN(UNIT=65,FILE='OUT/stats.dat',STATUS='UNKNOWN',ACTION='WRITE', &
-             FORM='FORMATTED',POSITION='APPEND')
-        WRITE(65,'(3(F25.12),1x,I8)') currenttime, integralresult(1:2), &
-                                      totalmeshsize
-        CLOSE(65)
-      END IF
-      totalmeshsize = 0
-      DO level = finestlevel, rootlevel, -1
-        CALL ApplyOnLevel(level,GetMeshSize,dummy)
-      END DO
-      PRINT *, 'Initial composite mesh size =', totalmeshsize
-      CALL WriteQ(0,currenttime)
-      IF(outputuniformmesh) CALL WriteUniformMeshQ(0,currenttime)
+               outputinitialdata = .FALSE.
+               PRINT 799
+799            FORMAT('==============================='/ &
+                  ' BSAM 2.0: Writing initial data'/ &
+                  '===============================')
+               IF(getafterstepstats) THEN
+                  integralresult = 0.0_r8
+                  totalmeshsize = 0
+                  DO level = finestlevel, rootlevel, -1
+                     CALL ApplyOnLevel(level,AfterStepStatistics,dummy)
+                     CALL ApplyOnLevel(level,GetMeshSize,dummy)
+                  END DO
+                  OPEN(UNIT=65,FILE='OUT/stats.dat',STATUS='UNKNOWN',ACTION='WRITE', &
+                     FORM='FORMATTED',POSITION='APPEND')
+                  WRITE(65,'(3(F25.12),1x,I8)') currenttime, integralresult(1:2), &
+                     totalmeshsize
+                  CLOSE(65)
+               END IF
+               totalmeshsize = 0
+               DO level = finestlevel, rootlevel, -1
+                  CALL ApplyOnLevel(level,GetMeshSize,dummy)
+               END DO
+               PRINT *, 'Initial composite mesh size =', totalmeshsize
+               CALL WriteQ(0,currenttime)
+               IF(outputuniformmesh) CALL WriteUniformMeshQ(0,currenttime)
 !
-    END IF
+            END IF
 !
-    IF(syncelliptic) THEN
-      PRINT *, ' '
-      PRINT *, ' '
-      PRINT *, 'BSAM 2.0: Synchronizing elliptic fields at start.' 
-      PRINT *, ' '
-    ELSE
-      PRINT *, ' '
-      PRINT *, ' '
-      PRINT 8001, currenttime+dt, finaltime
-      8001 FORMAT('BSAM 2.0: Advancing to time =', ES15.7, 1X, 'of', ES15.7)
-      PRINT *, ' '
-    END IF
+            IF(syncelliptic) THEN
+               PRINT *, ' '
+               PRINT *, ' '
+               PRINT *, 'BSAM 2.0: Synchronizing elliptic fields at start.'
+               PRINT *, ' '
+            ELSE
+               PRINT *, ' '
+               PRINT *, ' '
+               PRINT 8001, currenttime+dt, finaltime
+8001           FORMAT('BSAM 2.0: Advancing to time =', ES15.7, 1X, 'of', ES15.7)
+               PRINT *, ' '
+            END IF
 !
 ! For testing purposes only:
 !
@@ -771,1686 +771,1686 @@ printloop: DO n = firstframe, lastframe
 !    END DO
 !
 ! Perform Multigrid on the multilevel mesh:
-    CALL MultigridIterations
+            CALL MultigridIterations
 !
-    currenttime = starttime+REAL((n-firstframe)*itperprint+it,KIND=r8)*dt
+            currenttime = starttime+REAL((n-firstframe)*itperprint+it,KIND=r8)*dt
 !
 ! Calculate after step statistics:
-    IF(getafterstepstats .AND. (.NOT. syncelliptic)) THEN
+            IF(getafterstepstats .AND. (.NOT. syncelliptic)) THEN
 !
-      integralresult = 0.0_r8
-      totalmeshsize = 0
-      DO level = finestlevel, rootlevel, -1
-        CALL ApplyOnLevel(level,AfterStepStatistics,dummy)
-        CALL ApplyOnLevel(level,GetMeshSize,dummy)
-      END DO
-      OPEN(UNIT=65,FILE='OUT/stats.dat',STATUS='UNKNOWN',ACTION='WRITE', &
-           FORM='FORMATTED',POSITION='APPEND')
-      WRITE(65,'(3(F25.12),1x,I8)') currenttime, integralresult(1:2), &
-                                    totalmeshsize
-      CLOSE(65)
-    END IF
+               integralresult = 0.0_r8
+               totalmeshsize = 0
+               DO level = finestlevel, rootlevel, -1
+                  CALL ApplyOnLevel(level,AfterStepStatistics,dummy)
+                  CALL ApplyOnLevel(level,GetMeshSize,dummy)
+               END DO
+               OPEN(UNIT=65,FILE='OUT/stats.dat',STATUS='UNKNOWN',ACTION='WRITE', &
+                  FORM='FORMATTED',POSITION='APPEND')
+               WRITE(65,'(3(F25.12),1x,I8)') currenttime, integralresult(1:2), &
+                  totalmeshsize
+               CLOSE(65)
+            END IF
 !
-    IF(syncelliptic) THEN
-      syncelliptic = .false.
-      dt = dtsave
-      totalmeshsize = 0
-      DO level = finestlevel, rootlevel, -1
-        CALL ApplyOnLevel(level,GetMeshSize,dummy)
-      END DO
-      PRINT *, 'BSAM 2.0: Synchronization composite mesh size =', totalmeshsize
-    ELSE
-      it = it+1
-    END IF
+            IF(syncelliptic) THEN
+               syncelliptic = .false.
+               dt = dtsave
+               totalmeshsize = 0
+               DO level = finestlevel, rootlevel, -1
+                  CALL ApplyOnLevel(level,GetMeshSize,dummy)
+               END DO
+               PRINT *, 'BSAM 2.0: Synchronization composite mesh size =', totalmeshsize
+            ELSE
+               it = it+1
+            END IF
 !
 ! Set current time on the grid:
-    DO level = finestlevel, rootlevel, -1
-      CALL ApplyOnLevel(level,SetCurrentTime,dummy)
-    END DO
+            DO level = finestlevel, rootlevel, -1
+               CALL ApplyOnLevel(level,SetCurrentTime,dummy)
+            END DO
 !
-    IF(it>itperprint) EXIT timesteploop
+            IF(it>itperprint) EXIT timesteploop
 !
-  END DO timesteploop
+         END DO timesteploop
 !
-  totalmeshsize = 0
-  DO level = finestlevel, rootlevel, -1
-    CALL ApplyOnLevel(level,GetMeshSize,dummy)
-  END DO
-  PRINT *, 'Composite mesh size =', totalmeshsize
+         totalmeshsize = 0
+         DO level = finestlevel, rootlevel, -1
+            CALL ApplyOnLevel(level,GetMeshSize,dummy)
+         END DO
+         PRINT *, 'Composite mesh size =', totalmeshsize
 !
-  PRINT 1001, n, outframes, currenttime
-  1001 FORMAT( &
-    '===================================================================='/ &
-    ' Writing frame ',I3,' out of ',I3,' requested frames at t=',ES15.7,   / &
-    '====================================================================')
+         PRINT 1001, n, outframes, currenttime
+1001     FORMAT( &
+            '===================================================================='/ &
+            ' Writing frame ',I3,' out of ',I3,' requested frames at t=',ES15.7,   / &
+            '====================================================================')
 !
-  CALL WriteQ(n,currenttime)
-  IF(outputuniformmesh) CALL WriteUniformMeshQ(n,currenttime)
+         CALL WriteQ(n,currenttime)
+         IF(outputuniformmesh) CALL WriteUniformMeshQ(n,currenttime)
 !
-END DO printloop
+      END DO printloop
 !
-END SUBROUTINE TakeTimeSteps
+   END SUBROUTINE TakeTimeSteps
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION PrintGridInfo(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION PrintGridInfo(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-PrintGridInfo = err_ok
+      PrintGridInfo = err_ok
 !
-gridnumber = gridnumber+1
-PRINT *, ' '
-PRINT *, 'Grid number =', gridnumber, 'level=', info%level
-PRINT *, 'mx =', info%mx
-PRINT *, 'mb =', info%mbounds
-PRINT *, 'ngrid', info%ngrid
-PRINT *, 'activegrid', info%activegrid
-PRINT *, 'initialgrid', info%initialgrid
-PRINT *, 'tobedeleted', info%tobedeleted
-PRINT *, 'fieldsallocated', info%fieldsallocated
-PRINT *, ' '
+      gridnumber = gridnumber+1
+      PRINT *, ' '
+      PRINT *, 'Grid number =', gridnumber, 'level=', info%level
+      PRINT *, 'mx =', info%mx
+      PRINT *, 'mb =', info%mbounds
+      PRINT *, 'ngrid', info%ngrid
+      PRINT *, 'activegrid', info%activegrid
+      PRINT *, 'initialgrid', info%initialgrid
+      PRINT *, 'tobedeleted', info%tobedeleted
+      PRINT *, 'fieldsallocated', info%fieldsallocated
+      PRINT *, ' '
 !
-END FUNCTION PrintGridInfo
+   END FUNCTION PrintGridInfo
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION GetMeshSize(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION GetMeshSize(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER, DIMENSION(1:maxdims):: mx, cmx
+      INTEGER, DIMENSION(1:maxdims):: mx, cmx
 !
-GetMeshSize = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      GetMeshSize = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-mx(1:ndims) = info%mx(1:ndims)
-cmx(1:ndims) = mx(1:ndims)/2
+      mx(1:ndims) = info%mx(1:ndims)
+      cmx(1:ndims) = mx(1:ndims)/2
 !
-IF(info%level==0) THEN
-  totalmeshsize = totalmeshsize+PRODUCT(mx(1:ndims))
-ELSE
-  totalmeshsize = totalmeshsize+PRODUCT(mx(1:ndims))-PRODUCT(cmx(1:ndims))
-END IF
+      IF(info%level==0) THEN
+         totalmeshsize = totalmeshsize+PRODUCT(mx(1:ndims))
+      ELSE
+         totalmeshsize = totalmeshsize+PRODUCT(mx(1:ndims))-PRODUCT(cmx(1:ndims))
+      END IF
 !
-END FUNCTION GetMeshSize
+   END FUNCTION GetMeshSize
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION ReleaseInactiveFields(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-USE BSAMStorage, ONLY: DeAllocFields
-IMPLICIT NONE
+   INTEGER FUNCTION ReleaseInactiveFields(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      USE BSAMStorage, ONLY: DeAllocFields
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-ReleaseInactiveFields = err_ok
+      ReleaseInactiveFields = err_ok
 !
-IF(.NOT. info%activegrid) CALL DeAllocFields(info)
+      IF(.NOT. info%activegrid) CALL DeAllocFields(info)
 !
-END FUNCTION ReleaseInactiveFields
+   END FUNCTION ReleaseInactiveFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION ReleaseActiveFields(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-USE BSAMStorage, ONLY: DeAllocFields
-IMPLICIT NONE
+   INTEGER FUNCTION ReleaseActiveFields(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      USE BSAMStorage, ONLY: DeAllocFields
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-ReleaseActiveFields = err_ok
+      ReleaseActiveFields = err_ok
 !
-IF(info%activegrid) CALL DeAllocFields(info)
+      IF(info%activegrid) CALL DeAllocFields(info)
 !
-END FUNCTION ReleaseActiveFields
+   END FUNCTION ReleaseActiveFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION SetCurrentTime(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION SetCurrentTime(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-SetCurrentTime = err_ok
+      SetCurrentTime = err_ok
 !
-info%gridtime = currenttime
+      info%gridtime = currenttime
 !
-END FUNCTION SetCurrentTime
+   END FUNCTION SetCurrentTime
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION AfterStepStatistics(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok, GetParentInfo
-USE PROBLEM, ONLY: AfterStep2D, AfterStep3D
-IMPLICIT NONE
+   INTEGER FUNCTION AfterStepStatistics(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok, GetParentInfo
+      USE PROBLEM, ONLY: AfterStep2D, AfterStep3D
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-TYPE(nodeinfo), POINTER:: parent
-INTEGER:: ierror, level
-INTEGER, DIMENSION(1:maxdims):: mx
-INTEGER, DIMENSION(1:maxdims,1:2):: mb
-REAL(KIND=r8):: h
-REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
+      TYPE(nodeinfo), POINTER:: parent
+      INTEGER:: ierror, level
+      INTEGER, DIMENSION(1:maxdims):: mx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mb
+      REAL(KIND=r8):: h
+      REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
 !
-AfterStepStatistics = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      AfterStepStatistics = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-mx(1:ndims) = info%mx(1:ndims)
-h = info%dx(1)
-xlower(1:ndims) = info%xlower(1:ndims)
-level = info%level
-mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
+      mx(1:ndims) = info%mx(1:ndims)
+      h = info%dx(1)
+      xlower(1:ndims) = info%xlower(1:ndims)
+      level = info%level
+      mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
 !
-ierror = GetParentInfo(parent)
+      ierror = GetParentInfo(parent)
 !
-SELECT CASE(ndims)
-  CASE(2)
-    CALL AfterStep2D(info%q(0:mx(1)+1,0:mx(2)+1,1,1:nccv), &
-                     parent%q(mb(1,1)-1:mb(1,2)+1, &
-                              mb(2,1)-1:mb(2,2)+1,1,1:nccv), &
-                     mx(1:2),h,xlower(1:2),level)
-  CASE(3)
-    CALL AfterStep3D(info%q(0:mx(1)+1,0:mx(2)+1,0:mx(3)+1,1:nccv), &
-                     parent%q(mb(1,1)-1:mb(1,2)+1, &
-                              mb(2,1)-1:mb(2,2)+1, &
-                              mb(3,1)-1:mb(3,2)+1,1:nccv), &
-                     mx(1:3),h,xlower(1:3),level)
-  CASE DEFAULT
-    PRINT *, 'BSAM 2.0: AfterStepStatistics: Only ndims = 2,3 are supported.'
-    STOP
-END SELECT
+      SELECT CASE(ndims)
+       CASE(2)
+         CALL AfterStep2D(info%q(0:mx(1)+1,0:mx(2)+1,1,1:nccv), &
+            parent%q(mb(1,1)-1:mb(1,2)+1, &
+            mb(2,1)-1:mb(2,2)+1,1,1:nccv), &
+            mx(1:2),h,xlower(1:2),level)
+       CASE(3)
+         CALL AfterStep3D(info%q(0:mx(1)+1,0:mx(2)+1,0:mx(3)+1,1:nccv), &
+            parent%q(mb(1,1)-1:mb(1,2)+1, &
+            mb(2,1)-1:mb(2,2)+1, &
+            mb(3,1)-1:mb(3,2)+1,1:nccv), &
+            mx(1:3),h,xlower(1:3),level)
+       CASE DEFAULT
+         PRINT *, 'BSAM 2.0: AfterStepStatistics: Only ndims = 2,3 are supported.'
+         STOP
+      END SELECT
 !
-END FUNCTION AfterStepStatistics
+   END FUNCTION AfterStepStatistics
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-RECURSIVE SUBROUTINE AMR(level,estimateswitch)
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode, SetLevelNodeNumbers
-USE Boundary, ONLY: SetGhost
-IMPLICIT NONE
+   RECURSIVE SUBROUTINE AMR(level,estimateswitch)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode, SetLevelNodeNumbers
+      USE Boundary, ONLY: SetGhost
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
-INTEGER, OPTIONAL, INTENT(IN):: estimateswitch
+      INTEGER, INTENT(IN):: level
+      INTEGER, OPTIONAL, INTENT(IN):: estimateswitch
 !
-INTEGER:: lvl, noestimates
-TYPE(funcparam):: dummy
+      INTEGER:: lvl, noestimates
+      TYPE(funcparam):: dummy
 !
 !PRINT *, 'AMR level', level
 !
 ! Hard-coded for now, this will be a user option in the near future.
 ! to make the mesh having at most one hanging node.
-makeconformingmesh = .TRUE.
+      makeconformingmesh = .TRUE.
 !
-IF(.NOT. makeconformingmesh) meshbuildcomplete = .TRUE.
+      IF(.NOT. makeconformingmesh) meshbuildcomplete = .TRUE.
 !
 ! Detect coarse-level neighbors of the fine-level patches:
-IF(level >= 1 .AND. makeconformingmesh) &
-  CALL ApplyOnLevel(level,FindCoarseLevelNeighbors,dummy)
+      IF(level >= 1 .AND. makeconformingmesh) &
+         CALL ApplyOnLevel(level,FindCoarseLevelNeighbors,dummy)
 !
 ! Fill in the ghost points:
-CALL SetGhost(level,0)
+      CALL SetGhost(level,0)
 !
 ! Before we adapt the mesh further, check to see that the mesh is conforming:
-IF(level >= 2 .AND. makeconformingmesh) CALL FindMeshDefects(level)
+      IF(level >= 2 .AND. makeconformingmesh) CALL FindMeshDefects(level)
 !
 ! If the mesh is defective, then we need to fix it before moving on:
-IF(defectivegridlevel(level) .AND. amrrestarts < 100) THEN
+      IF(defectivegridlevel(level) .AND. amrrestarts < 100) THEN
 !
 ! Delete the current and last active levels. Note, need to keep inactive grids:
-  DO lvl = level, level-1, -1
-    CALL ApplyOnLevel(lvl,ReleaseActiveFields,dummy)
-    CALL ApplyOnLevel(lvl,DeleteMarkedNode,dummy)
-  END DO
-  defectivegridlevel(level-1:level) = .FALSE.
-!  
+         DO lvl = level, level-1, -1
+            CALL ApplyOnLevel(lvl,ReleaseActiveFields,dummy)
+            CALL ApplyOnLevel(lvl,DeleteMarkedNode,dummy)
+         END DO
+         defectivegridlevel(level-1:level) = .FALSE.
+!
 !  PRINT *, 'Restarting AMR at level =', level, ',    amrrestarts =', amrrestarts
-  amrrestarts = amrrestarts+1
-  finestlevel = level-2
-  CALL AMR(level-2,noestimates)
-  ! here AMR will call himself so many times untill the top level is reached
-  RETURN 
-!  
-END IF
+         amrrestarts = amrrestarts+1
+         finestlevel = level-2
+         CALL AMR(level-2,noestimates)
+         ! here AMR will call himself so many times untill the top level is reached
+         RETURN
+!
+      END IF
 !
 ! Tag cells for refinement:
-IF(level < maxlevel .AND. (.NOT. PRESENT(estimateswitch))) THEN
-  CALL EstimateLevelErrors(level)
-END IF
+      IF(level < maxlevel .AND. (.NOT. PRESENT(estimateswitch))) THEN
+         CALL EstimateLevelErrors(level)
+      END IF
 !
 ! Create new subgrids if necessary:
-CALL GridAdapt(level)
-CALL SetLevelNodeNumbers(level+1)
+      CALL GridAdapt(level)
+      CALL SetLevelNodeNumbers(level+1)
 !
-IF(level < finestlevel) CALL AMR(level+1)
+      IF(level < finestlevel) CALL AMR(level+1)
 !
-END SUBROUTINE AMR
+   END SUBROUTINE AMR
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE EstimateLevelErrors(level)
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel
-USE AFASRoutines, ONLY: RestrictCCSolution, RelativeTruncationError
-USE Boundary, ONLY: SetGhost, GetCoarseGhostPoints
-IMPLICIT NONE
+   SUBROUTINE EstimateLevelErrors(level)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel
+      USE AFASRoutines, ONLY: RestrictCCSolution, RelativeTruncationError
+      USE Boundary, ONLY: SetGhost, GetCoarseGhostPoints
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: level
 !
-TYPE(funcparam):: dummy
+      TYPE(funcparam):: dummy
 !
 ! 1) Calculate the relative truncation error if needed:
-IF(errflagopt(level) == errflagdefault) THEN
-  CALL ApplyOnLevel(level,RestrictCCSolution,dummy)
+      IF(errflagopt(level) == errflagdefault) THEN
+         CALL ApplyOnLevel(level,RestrictCCSolution,dummy)
 !
-  CALL SetGhost(level-1,0)
+         CALL SetGhost(level-1,0)
 !
-  CALL ApplyOnLevel(level,GetCoarseGhostPoints,dummy)
+         CALL ApplyOnLevel(level,GetCoarseGhostPoints,dummy)
 !
-  CALL ApplyOnLevel(level,CopyQToQold,dummy)
+         CALL ApplyOnLevel(level,CopyQToQold,dummy)
 !
-  CALL ApplyOnLevel(level-1,CopyQToQold,dummy)
+         CALL ApplyOnLevel(level-1,CopyQToQold,dummy)
 !
-  CALL ApplyOnLevel(level,RelativeTruncationError,dummy)
-END IF
+         CALL ApplyOnLevel(level,RelativeTruncationError,dummy)
+      END IF
 !
 ! 2) Refine based on the size of the error estimator.  Make a linked list of
 !    tagged cells:
-ALLOCATE(zerothtaggedcell)
-NULLIFY(zerothtaggedcell%prevcell)
+      ALLOCATE(zerothtaggedcell)
+      NULLIFY(zerothtaggedcell%prevcell)
 !
-lasttaggedcell => zerothtaggedcell
-ntaggedcells = 0
+      lasttaggedcell => zerothtaggedcell
+      ntaggedcells = 0
 !
-CALL ApplyOnLevel(level,EstimateError,dummy)
+      CALL ApplyOnLevel(level,EstimateError,dummy)
 !
 ! 3) Inflate tagged regions and destroy the list:
-IF(ntaggedcells > 0) THEN
-  CALL InflateEdgeTags(level)
-  CALL DeleteTaggedCellsList
-END IF
+      IF(ntaggedcells > 0) THEN
+         CALL InflateEdgeTags(level)
+         CALL DeleteTaggedCellsList
+      END IF
 !
-NULLIFY(lasttaggedcell)
-NULLIFY(currenttaggedcell)
-DEALLOCATE(zerothtaggedcell)
+      NULLIFY(lasttaggedcell)
+      NULLIFY(currenttaggedcell)
+      DEALLOCATE(zerothtaggedcell)
 !
-END SUBROUTINE EstimateLevelErrors
+   END SUBROUTINE EstimateLevelErrors
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION EstimateError(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION EstimateError(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-EstimateError = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      EstimateError = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-CALL ErrFlag(info)
+      CALL ErrFlag(info)
 !
-END FUNCTION EstimateError
+   END FUNCTION EstimateError
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE ErrFlag(info)
-USE NodeInfoDef
-USE Problem, ONLY: SetErrFlagsUser2D, SetErrFlagsUser3D
-IMPLICIT NONE
+   SUBROUTINE ErrFlag(info)
+      USE NodeInfoDef
+      USE Problem, ONLY: SetErrFlagsUser2D, SetErrFlagsUser3D
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
+      TYPE(nodeinfo):: info
 !
-INTEGER:: level
-INTEGER, DIMENSION(1:maxdims):: mx, cmx
-INTEGER, DIMENSION(1:maxdims,1:2):: mglobal
-REAL(KIND=r8):: h
-REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
+      INTEGER:: level
+      INTEGER, DIMENSION(1:maxdims):: mx, cmx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mglobal
+      REAL(KIND=r8):: h
+      REAL(KIND=r8), DIMENSION(1:maxdims):: xlower
 !
-level = info%level
-h = info%dx(1)
-xlower(1:ndims) = info%xlower(1:ndims)
-mx = 1; mx(1:ndims) = info%mx(1:ndims)
-cmx = 1; cmx(1:ndims) = mx(1:ndims)/2
-mglobal = 1; mglobal(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
+      level = info%level
+      h = info%dx(1)
+      xlower(1:ndims) = info%xlower(1:ndims)
+      mx = 1; mx(1:ndims) = info%mx(1:ndims)
+      cmx = 1; cmx(1:ndims) = mx(1:ndims)/2
+      mglobal = 1; mglobal(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
 !
-SELECT CASE(errflagopt(level))
-CASE(errflagdefault)
+      SELECT CASE(errflagopt(level))
+       CASE(errflagdefault)
 !
 ! Default error tagging based on the relative truncation error:
-  SELECT CASE(ndims)
-  CASE(2)
-    CALL SetErrFlags2D(info%qrte(1:cmx(1),1:cmx(2),1,1:nccv), &
-                       info%errorflags(1:mx(1),1:mx(2),1), &
-                       mx(1:2),cmx(1:2),h,level)
-  CASE(3)
-    CALL SetErrFlags3D(info%qrte(1:cmx(1),1:cmx(2),1:cmx(3),1:nccv), &
-                       info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                       mx(1:3),cmx(1:3),h,level)
+         SELECT CASE(ndims)
+          CASE(2)
+            CALL SetErrFlags2D(info%qrte(1:cmx(1),1:cmx(2),1,1:nccv), &
+               info%errorflags(1:mx(1),1:mx(2),1), &
+               mx(1:2),cmx(1:2),h,level)
+          CASE(3)
+            CALL SetErrFlags3D(info%qrte(1:cmx(1),1:cmx(2),1:cmx(3),1:nccv), &
+               info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+               mx(1:3),cmx(1:3),h,level)
 !
-  CASE DEFAULT
-    PRINT *, 'ErrFlag: only ndims=2d,3d supported'
-    STOP
-  END SELECT
+          CASE DEFAULT
+            PRINT *, 'ErrFlag: only ndims=2d,3d supported'
+            STOP
+         END SELECT
 !
-CASE(errflaguser)
+       CASE(errflaguser)
 !
 ! User chooses the error tagging proceedure:
-  SELECT CASE(ndims)
-  CASE(2)
-    CALL SetErrFlagsUser2D(info%qrte(1:cmx(1)  ,1:cmx(2)  ,1,1:nccv), &
-                           info%q   (0: mx(1)+1,0: mx(2)+1,1,1:nccv), &
-                           info%errorflags(1:mx(1),1:mx(2),1), &
-                           mx(1:2),cmx(1:2),h,xlower(1:2),level)
-  CASE(3)
-    CALL SetErrFlagsUser3D(info%qrte(1:cmx(1)  ,1:cmx(2)  ,1:cmx(3)  ,1:nccv), &
-                           info%q   (0: mx(1)+1,0: mx(2)+1,0: mx(3)+1,1:nccv), &
-                           info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                           mx(1:3),cmx(1:3),h,xlower(1:3),level)
+         SELECT CASE(ndims)
+          CASE(2)
+            CALL SetErrFlagsUser2D(info%qrte(1:cmx(1)  ,1:cmx(2)  ,1,1:nccv), &
+               info%q   (0: mx(1)+1,0: mx(2)+1,1,1:nccv), &
+               info%errorflags(1:mx(1),1:mx(2),1), &
+               mx(1:2),cmx(1:2),h,xlower(1:2),level)
+          CASE(3)
+            CALL SetErrFlagsUser3D(info%qrte(1:cmx(1)  ,1:cmx(2)  ,1:cmx(3)  ,1:nccv), &
+               info%q   (0: mx(1)+1,0: mx(2)+1,0: mx(3)+1,1:nccv), &
+               info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+               mx(1:3),cmx(1:3),h,xlower(1:3),level)
 !
-  CASE DEFAULT
-    PRINT *, 'ErrFlag: only ndims=2d,3d supported'
-    STOP
-  END SELECT
+          CASE DEFAULT
+            PRINT *, 'ErrFlag: only ndims=2d,3d supported'
+            STOP
+         END SELECT
 !
-CASE DEFAULT
-  PRINT *, 'ErrFlag: No error flagging algorithm selected'
-  STOP
-END SELECT
+       CASE DEFAULT
+         PRINT *, 'ErrFlag: No error flagging algorithm selected'
+         STOP
+      END SELECT
 !
 ! Add the tagged cells to a linked list. Buffering requires a global approach,
 ! since buffer layers might go into neighboring grids:
-IF(ibuffer(level) > 0) THEN
-  CALL BufferAndList(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                     mglobal(1:3,1:2),mx(1:3),level)
-END IF
-!
-END SUBROUTINE ErrFlag
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-SUBROUTINE SetErrFlags2D(qrte,errorflags,mx,cmx,h,level)
-USE NodeInfoDef
-IMPLICIT NONE
-!
-REAL(KIND=r8), DIMENSION(1:,1:,1:), INTENT(IN):: qrte
-INTEGER, DIMENSION(1:,1:), INTENT(OUT):: errorflags
-INTEGER, DIMENSION(1:2), INTENT(IN):: mx
-INTEGER, DIMENSION(1:2), INTENT(IN):: cmx
-REAL(KIND=r8), INTENT(IN):: h
-INTEGER, INTENT(IN):: level
-!
-INTEGER:: i, j
-REAL(KIND=r8):: tol
-!
-tol = qtolerance(level)/h/h
-!
-errorflags(1:mx(1),1:mx(2)) = 0
-!
-DO i = 1, cmx(1)
-  DO j = 1, cmx(2)
-    IF(MAXVAL(ABS(qrte(i,j,1:nccv)))>tol) THEN
-      errorflags(2*i  ,2*j  ) = 1
-      errorflags(2*i-1,2*j  ) = 1
-      errorflags(2*i  ,2*j-1) = 1
-      errorflags(2*i-1,2*j-1) = 1
-    END IF
-  END DO
-END DO
-!
-END SUBROUTINE SetErrFlags2D
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!
-SUBROUTINE SetErrFlags3D(qrte,errorflags,mx,cmx,h,level)
-USE NodeInfoDef
-IMPLICIT NONE
-!
-REAL(KIND=r8), DIMENSION(1:,1:,1:,1:), INTENT(IN):: qrte
-INTEGER, DIMENSION(1:,1:,1:), INTENT(OUT):: errorflags
-INTEGER, DIMENSION(1:3), INTENT(IN):: mx
-INTEGER, DIMENSION(1:3), INTENT(IN):: cmx
-REAL(KIND=r8), INTENT(IN):: h
-INTEGER, INTENT(IN):: level
-!
-INTEGER:: i, j, k
-REAL(KIND=r8):: tol
-!
-tol = qtolerance(level)/h/h/h
-!
-errorflags(1:mx(1),1:mx(2),1:mx(3)) = 0
-!
-DO i = 1, cmx(1)
-  DO j = 1, cmx(2)
-    DO k = 1, cmx(3)
-      IF(MAXVAL(ABS(qrte(i,j,k,1:nccv)))>tol) THEN
-        errorflags(2*i  ,2*j  ,2*k  ) = 1
-        errorflags(2*i-1,2*j  ,2*k  ) = 1
-        errorflags(2*i  ,2*j-1,2*k  ) = 1
-        errorflags(2*i-1,2*j-1,2*k  ) = 1
-        errorflags(2*i  ,2*j  ,2*k-1) = 1
-        errorflags(2*i-1,2*j  ,2*k-1) = 1
-        errorflags(2*i  ,2*j-1,2*k-1) = 1
-        errorflags(2*i-1,2*j-1,2*k-1) = 1
+      IF(ibuffer(level) > 0) THEN
+         CALL BufferAndList(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+            mglobal(1:3,1:2),mx(1:3),level)
       END IF
-    END DO
-  END DO
-END DO
 !
-END SUBROUTINE SetErrFlags3D
+   END SUBROUTINE ErrFlag
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE BufferAndList(errorflags,mglobal,mx,level)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE SetErrFlags2D(qrte,errorflags,mx,cmx,h,level)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:,1:,1:), INTENT(IN OUT):: errorflags
-INTEGER, DIMENSION(1:3,1:2), INTENT(IN):: mglobal
-INTEGER, DIMENSION(1:3), INTENT(IN):: mx
-INTEGER, INTENT(IN):: level
+      REAL(KIND=r8), DIMENSION(1:,1:,1:), INTENT(IN):: qrte
+      INTEGER, DIMENSION(1:,1:), INTENT(OUT):: errorflags
+      INTEGER, DIMENSION(1:2), INTENT(IN):: mx
+      INTEGER, DIMENSION(1:2), INTENT(IN):: cmx
+      REAL(KIND=r8), INTENT(IN):: h
+      INTEGER, INTENT(IN):: level
 !
-INTEGER:: i, j, k
-INTEGER, DIMENSION(1:maxdims):: index
-INTEGER, DIMENSION(1:maxdims,1:2):: mtg
-INTEGER, DIMENSION(1:mx(1),1:mx(2),1:mx(3)):: errorflagstmp
+      INTEGER:: i, j
+      REAL(KIND=r8):: tol
 !
-errorflagstmp = errorflags
-mtg = 1
+      tol = qtolerance(level)/h/h
 !
-DO k = 1, mx(3)
-  index(3) = k
-  DO j = 1, mx(2)
-    index(2) = j
-    DO i = 1, mx(1)
-      index(1) = i
-      IF(errorflagstmp(i,j,k)==1) THEN
-        mtg(1:ndims,1) = index(1:ndims)-ibuffer(level)
-        mtg(1:ndims,2) = index(1:ndims)+ibuffer(level)
-        IF(ANY(mtg(1:3,1)<1) .OR. ANY(mtg(1:3,2)>mx(1:3))) THEN
+      errorflags(1:mx(1),1:mx(2)) = 0
+!
+      DO i = 1, cmx(1)
+         DO j = 1, cmx(2)
+            IF(MAXVAL(ABS(qrte(i,j,1:nccv)))>tol) THEN
+               errorflags(2*i  ,2*j  ) = 1
+               errorflags(2*i-1,2*j  ) = 1
+               errorflags(2*i  ,2*j-1) = 1
+               errorflags(2*i-1,2*j-1) = 1
+            END IF
+         END DO
+      END DO
+!
+   END SUBROUTINE SetErrFlags2D
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+   SUBROUTINE SetErrFlags3D(qrte,errorflags,mx,cmx,h,level)
+      USE NodeInfoDef
+      IMPLICIT NONE
+!
+      REAL(KIND=r8), DIMENSION(1:,1:,1:,1:), INTENT(IN):: qrte
+      INTEGER, DIMENSION(1:,1:,1:), INTENT(OUT):: errorflags
+      INTEGER, DIMENSION(1:3), INTENT(IN):: mx
+      INTEGER, DIMENSION(1:3), INTENT(IN):: cmx
+      REAL(KIND=r8), INTENT(IN):: h
+      INTEGER, INTENT(IN):: level
+!
+      INTEGER:: i, j, k
+      REAL(KIND=r8):: tol
+!
+      tol = qtolerance(level)/h/h/h
+!
+      errorflags(1:mx(1),1:mx(2),1:mx(3)) = 0
+!
+      DO i = 1, cmx(1)
+         DO j = 1, cmx(2)
+            DO k = 1, cmx(3)
+               IF(MAXVAL(ABS(qrte(i,j,k,1:nccv)))>tol) THEN
+                  errorflags(2*i  ,2*j  ,2*k  ) = 1
+                  errorflags(2*i-1,2*j  ,2*k  ) = 1
+                  errorflags(2*i  ,2*j-1,2*k  ) = 1
+                  errorflags(2*i-1,2*j-1,2*k  ) = 1
+                  errorflags(2*i  ,2*j  ,2*k-1) = 1
+                  errorflags(2*i-1,2*j  ,2*k-1) = 1
+                  errorflags(2*i  ,2*j-1,2*k-1) = 1
+                  errorflags(2*i-1,2*j-1,2*k-1) = 1
+               END IF
+            END DO
+         END DO
+      END DO
+!
+   END SUBROUTINE SetErrFlags3D
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+   SUBROUTINE BufferAndList(errorflags,mglobal,mx,level)
+      USE NodeInfoDef
+      IMPLICIT NONE
+!
+      INTEGER, DIMENSION(1:,1:,1:), INTENT(IN OUT):: errorflags
+      INTEGER, DIMENSION(1:3,1:2), INTENT(IN):: mglobal
+      INTEGER, DIMENSION(1:3), INTENT(IN):: mx
+      INTEGER, INTENT(IN):: level
+!
+      INTEGER:: i, j, k
+      INTEGER, DIMENSION(1:maxdims):: index
+      INTEGER, DIMENSION(1:maxdims,1:2):: mtg
+      INTEGER, DIMENSION(1:mx(1),1:mx(2),1:mx(3)):: errorflagstmp
+!
+      errorflagstmp = errorflags
+      mtg = 1
+!
+      DO k = 1, mx(3)
+         index(3) = k
+         DO j = 1, mx(2)
+            index(2) = j
+            DO i = 1, mx(1)
+               index(1) = i
+               IF(errorflagstmp(i,j,k)==1) THEN
+                  mtg(1:ndims,1) = index(1:ndims)-ibuffer(level)
+                  mtg(1:ndims,2) = index(1:ndims)+ibuffer(level)
+                  IF(ANY(mtg(1:3,1)<1) .OR. ANY(mtg(1:3,2)>mx(1:3))) THEN
 !
 ! If the buffer area overlaps with any edge of the patch, then record the
 ! global coordinates of the cell:
-          Call AddTaggedCellToList(index(1:maxdims)+mglobal(1:maxdims,1)-1)
-        ELSE
+                     Call AddTaggedCellToList(index(1:maxdims)+mglobal(1:maxdims,1)-1)
+                  ELSE
 !
 ! If the buffer area lies within the patch, apply the buffer:
-          errorflags(mtg(1,1):mtg(1,2),mtg(2,1):mtg(2,2),mtg(3,1):mtg(3,2)) = 1
-        END IF
-      END IF
-    END DO
-  END DO
-END DO
+                     errorflags(mtg(1,1):mtg(1,2),mtg(2,1):mtg(2,2),mtg(3,1):mtg(3,2)) = 1
+                  END IF
+               END IF
+            END DO
+         END DO
+      END DO
 !
-END SUBROUTINE BufferAndList
+   END SUBROUTINE BufferAndList
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE AddTaggedCellToList(globalindex)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE AddTaggedCellToList(globalindex)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:maxdims), INTENT(IN):: globalindex
+      INTEGER, DIMENSION(1:maxdims), INTENT(IN):: globalindex
 !
-ntaggedcells = ntaggedcells+1
-ALLOCATE(currenttaggedcell)
-currenttaggedcell%id = ntaggedcells
-currenttaggedcell%coordinate(1:maxdims) = 1
-currenttaggedcell%coordinate(1:ndims) = globalindex(1:ndims)
-currenttaggedcell%prevcell => lasttaggedcell
-lasttaggedcell => currenttaggedcell
+      ntaggedcells = ntaggedcells+1
+      ALLOCATE(currenttaggedcell)
+      currenttaggedcell%id = ntaggedcells
+      currenttaggedcell%coordinate(1:maxdims) = 1
+      currenttaggedcell%coordinate(1:ndims) = globalindex(1:ndims)
+      currenttaggedcell%prevcell => lasttaggedcell
+      lasttaggedcell => currenttaggedcell
 !
-END SUBROUTINE AddTaggedCellToList
+   END SUBROUTINE AddTaggedCellToList
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE InflateEdgeTags(level)
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel
-USE Boundary, ONLY: GetPeriodicOffsets
-IMPLICIT NONE
+   SUBROUTINE InflateEdgeTags(level)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel
+      USE Boundary, ONLY: GetPeriodicOffsets
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: level
 !
-TYPE(funcparam):: dummy
-LOGICAL:: periodicbuffer
-INTEGER:: offset, polarity
-INTEGER, DIMENSION(1:maxdims):: coordinatesave
+      TYPE(funcparam):: dummy
+      LOGICAL:: periodicbuffer
+      INTEGER:: offset, polarity
+      INTEGER, DIMENSION(1:maxdims):: coordinatesave
 !
-coordinatesave = 1
-currenttaggedcell => lasttaggedcell
-searchloop: DO
-  IF(.NOT. ASSOCIATED(currenttaggedcell%prevcell)) EXIT searchloop
+      coordinatesave = 1
+      currenttaggedcell => lasttaggedcell
+      searchloop: DO
+         IF(.NOT. ASSOCIATED(currenttaggedcell%prevcell)) EXIT searchloop
 !
 ! Ordinary buffering of an edge tag:
-  dummy%iswitch = ibuffer(level)
-  CALL ApplyOnLevel(level,BufferTaggedCells,dummy)
+         dummy%iswitch = ibuffer(level)
+         CALL ApplyOnLevel(level,BufferTaggedCells,dummy)
 !
-! Buffering of periodic edge tags. Check to see if the buffer area cuts across 
+! Buffering of periodic edge tags. Check to see if the buffer area cuts across
 ! a periodic boundary.  If so, add offset and apply buffer:
-  coordinatesave(1:ndims) = currenttaggedcell%coordinate(1:ndims)
-  IF(periodicboundaryconditions) THEN
-    CALL GetPeriodicOffsets(level)
-    DO polarity = -1, 1, 2
-      DO offset = 1, nperiodicoffsets
-        currenttaggedcell%coordinate(1:ndims) &
-          = coordinatesave(1:ndims)+polarity*poffset(1:ndims,offset)
-        dummy%iswitch = ibuffer(level)
-        CALL ApplyOnLevel(level,BufferTaggedCells,dummy)
-      END DO
-    END DO
-  END IF
-  currenttaggedcell%coordinate(1:ndims) = coordinatesave(1:ndims)
+         coordinatesave(1:ndims) = currenttaggedcell%coordinate(1:ndims)
+         IF(periodicboundaryconditions) THEN
+            CALL GetPeriodicOffsets(level)
+            DO polarity = -1, 1, 2
+               DO offset = 1, nperiodicoffsets
+                  currenttaggedcell%coordinate(1:ndims) &
+                     = coordinatesave(1:ndims)+polarity*poffset(1:ndims,offset)
+                  dummy%iswitch = ibuffer(level)
+                  CALL ApplyOnLevel(level,BufferTaggedCells,dummy)
+               END DO
+            END DO
+         END IF
+         currenttaggedcell%coordinate(1:ndims) = coordinatesave(1:ndims)
 !
-  currenttaggedcell => currenttaggedcell%prevcell
-END DO searchloop
+         currenttaggedcell => currenttaggedcell%prevcell
+      END DO searchloop
 !
-END SUBROUTINE InflateEdgeTags
+   END SUBROUTINE InflateEdgeTags
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION BufferTaggedCells(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION BufferTaggedCells(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER:: ibuff, n
-INTEGER, DIMENSION(1:maxdims,1:2):: mglobal, mglobaltag, mlocal, moverlap
+      INTEGER:: ibuff, n
+      INTEGER, DIMENSION(1:maxdims,1:2):: mglobal, mglobaltag, mlocal, moverlap
 !
-BufferTaggedCells = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      BufferTaggedCells = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
 ! ibuff stands for the buffer layer of the tagged cell, the default value is 1
-ibuff = dummy%iswitch
+      ibuff = dummy%iswitch
 ! info%mglobal(1:ndims,1:2) is the global index of the current patch
-mglobal = 1; mglobal(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
-mglobaltag = 1 
+      mglobal = 1; mglobal(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
+      mglobaltag = 1
 ! mglobaltag is the index of the buffer layer
-mglobaltag(1:ndims,1) = currenttaggedcell%coordinate(1:ndims)-ibuff
-mglobaltag(1:ndims,2) = currenttaggedcell%coordinate(1:ndims)+ibuff
+      mglobaltag(1:ndims,1) = currenttaggedcell%coordinate(1:ndims)-ibuff
+      mglobaltag(1:ndims,2) = currenttaggedcell%coordinate(1:ndims)+ibuff
 !
 ! 1. Find overlap region in global index space:
-moverlap = 1
-moverlap(1:ndims,1) = MAX(mglobaltag(1:ndims,1),mglobal(1:ndims,1))
-moverlap(1:ndims,2) = MIN(mglobaltag(1:ndims,2),mglobal(1:ndims,2))
+      moverlap = 1
+      moverlap(1:ndims,1) = MAX(mglobaltag(1:ndims,1),mglobal(1:ndims,1))
+      moverlap(1:ndims,2) = MIN(mglobaltag(1:ndims,2),mglobal(1:ndims,2))
 !
 ! 2. Check for nonempty intersection:
-IF(ANY(moverlap(:,2)-moverlap(:,1)<0)) RETURN
+      IF(ANY(moverlap(:,2)-moverlap(:,1)<0)) RETURN
 !
 ! 3. Transform gobal index space to local grid index spaces:
-mlocal = 1
-DO n = 1, ndims
-  mlocal(n,1:2) = moverlap(n,1:2)-mglobal(n,1)+1
-END DO
+      mlocal = 1
+      DO n = 1, ndims
+         mlocal(n,1:2) = moverlap(n,1:2)-mglobal(n,1)+1
+      END DO
 !
-info%errorflags(mlocal(1,1):mlocal(1,2), &
-                mlocal(2,1):mlocal(2,2), &
-                mlocal(3,1):mlocal(3,2)) = 1
+      info%errorflags(mlocal(1,1):mlocal(1,2), &
+         mlocal(2,1):mlocal(2,2), &
+         mlocal(3,1):mlocal(3,2)) = 1
 !
-END FUNCTION BufferTaggedCells
+   END FUNCTION BufferTaggedCells
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE DeleteTaggedCellsList
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE DeleteTaggedCellsList
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-searchloop: DO
-  currenttaggedcell => lasttaggedcell%prevcell
-  DEALLOCATE(lasttaggedcell)
-  lasttaggedcell => currenttaggedcell
-  IF(.NOT. ASSOCIATED(lasttaggedcell%prevcell)) EXIT searchloop
-END DO searchloop
+      searchloop: DO
+         currenttaggedcell => lasttaggedcell%prevcell
+         DEALLOCATE(lasttaggedcell)
+         lasttaggedcell => currenttaggedcell
+         IF(.NOT. ASSOCIATED(lasttaggedcell%prevcell)) EXIT searchloop
+      END DO searchloop
 !
-END SUBROUTINE DeleteTaggedCellsList
+   END SUBROUTINE DeleteTaggedCellsList
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE GridAdapt(level)
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel, ApplyOnLevelPairs, DeleteMarkedNode
-IMPLICIT NONE
+   SUBROUTINE GridAdapt(level)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel, ApplyOnLevelPairs, DeleteMarkedNode
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: level
 !
 ! Generate new subgrids of level:
 !
-TYPE(funcparam):: dummy
-INTEGER:: ilevel
+      TYPE(funcparam):: dummy
+      INTEGER:: ilevel
 !
 ! Generate new grids in accordance with error flags:
-CALL ApplyOnLevel(level,RefineGrid,dummy)
+      CALL ApplyOnLevel(level,RefineGrid,dummy)
 !
 ! Transfer field values from previous grids on this level to the newly created
 ! grids:
-CALL ApplyOnLevelPairs(level+1,TransferValues,dummy)
+      CALL ApplyOnLevelPairs(level+1,TransferValues,dummy)
 !
-END SUBROUTINE GridAdapt
+   END SUBROUTINE GridAdapt
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION RefineGrid(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION RefineGrid(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER, DIMENSION(1:maxdims,1:2):: mbounds
+      INTEGER, DIMENSION(1:maxdims,1:2):: mbounds
 !
-RefineGrid = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      RefineGrid = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
 ! Generate new subgrids of the current grid:
-mbounds(1:ndims,1) = 1; mbounds(1:ndims,2) = info%mx(1:ndims)
-CALL NewSubGrids(info,mbounds)
+      mbounds(1:ndims,1) = 1; mbounds(1:ndims,2) = info%mx(1:ndims)
+      CALL NewSubGrids(info,mbounds)
 !
-END FUNCTION RefineGrid
+   END FUNCTION RefineGrid
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE NewSubGrids(info,mbounds)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE NewSubGrids(info,mbounds)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-! Modified implementation of Berger-Rigoutsos algorithm (IEEE Trans. Systems, 
+! Modified implementation of Berger-Rigoutsos algorithm (IEEE Trans. Systems,
 ! Man. & Cyber., 21(5):1278-1286, 1991):
 !
-TYPE(nodeinfo):: info
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN OUT):: mbounds
+      TYPE(nodeinfo):: info
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN OUT):: mbounds
 !
-LOGICAL havesplit, cansplitgrid
-LOGICAL, DIMENSION(1:maxsubgrids):: cansplit
-INTEGER, PARAMETER:: maxsplitpasses = 15
-INTEGER:: del, dist0, dist1, i, i1, i2, ierror, igrid, inflect, level, maxm, &
-          mgp, minm, n, nn, ngrid, npass
-INTEGER, DIMENSION(1:maxdims):: isplit, mx
-INTEGER, DIMENSION(1:maxdims,1:2,1:maxsubgrids):: msubbounds
-INTEGER, DIMENSION(:,:), ALLOCATABLE:: signature ,ddsignature
-REAL(KIND=r8):: fillratio, desfillratio
+      LOGICAL havesplit, cansplitgrid
+      LOGICAL, DIMENSION(1:maxsubgrids):: cansplit
+      INTEGER, PARAMETER:: maxsplitpasses = 15
+      INTEGER:: del, dist0, dist1, i, i1, i2, ierror, igrid, inflect, level, maxm, &
+         mgp, minm, n, nn, ngrid, npass
+      INTEGER, DIMENSION(1:maxdims):: isplit, mx
+      INTEGER, DIMENSION(1:maxdims,1:2,1:maxsubgrids):: msubbounds
+      INTEGER, DIMENSION(:,:), ALLOCATABLE:: signature ,ddsignature
+      REAL(KIND=r8):: fillratio, desfillratio
 !
-mx = info%mx
-level = info%level; info%nsubgrids = 0
-desfillratio = desiredfillratios(level)
+      mx = info%mx
+      level = info%level; info%nsubgrids = 0
+      desfillratio = desiredfillratios(level)
 !
-mgp = minimumgridpoints(level)
-IF(mgp<4) THEN
-  PRINT *,'BSAM 2.0: Error on level', level, 'minimumgridpoints cannot be less than 4.'
-  STOP
-END IF
-IF(MODULO(mgp,2)==1) THEN
-  PRINT *,'BSAM 2.0: Error on level', level, 'minimumgridpoints must be even.'
-  STOP
-END IF
+      mgp = minimumgridpoints(level)
+      IF(mgp<4) THEN
+         PRINT *,'BSAM 2.0: Error on level', level, 'minimumgridpoints cannot be less than 4.'
+         STOP
+      END IF
+      IF(MODULO(mgp,2)==1) THEN
+         PRINT *,'BSAM 2.0: Error on level', level, 'minimumgridpoints must be even.'
+         STOP
+      END IF
 !
 ! Compute fill ratio for this grid:
-fillratio = GridFlagRatio(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                          mbounds)
+      fillratio = GridFlagRatio(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+         mbounds)
 !
 ! Don't generate a new grid if we don't have flagged points:
-IF(fillratio < 1.0E-10_r8) RETURN
+      IF(fillratio < 1.0E-10_r8) RETURN
 !
 ! Allocate space for signatures:
-maxm = MAXVAL(mx(1:ndims))
-ALLOCATE(signature(1:maxm,1:ndims),ddsignature(1:maxm,1:ndims),STAT=ierror)
-IF(ierror /= 0) THEN
-  PRINT *,'BSAM 2.0: Error allocating signatures arrays in NewSubGrids'
-  STOP
-END IF
-signature=0; ddsignature=0
+      maxm = MAXVAL(mx(1:ndims))
+      ALLOCATE(signature(1:maxm,1:ndims),ddsignature(1:maxm,1:ndims),STAT=ierror)
+      IF(ierror /= 0) THEN
+         PRINT *,'BSAM 2.0: Error allocating signatures arrays in NewSubGrids'
+         STOP
+      END IF
+      signature=0; ddsignature=0
 !
 ! Initialize list of subgrids:
-ngrid = 1; cansplit(:) = .TRUE.
-msubbounds(1:ndims,1:2,ngrid) = mbounds(1:ndims,1:2)
+      ngrid = 1; cansplit(:) = .TRUE.
+      msubbounds(1:ndims,1:2,ngrid) = mbounds(1:ndims,1:2)
 !
 ! Loop until no better grid splitting can be found:
-igrid = 1
-DO WHILE (ngrid<maxsubgrids .AND. igrid<=ngrid)
-  npass = 0
-  DO WHILE (cansplit(igrid) .AND. npass<maxsplitpasses)
-    npass = npass+1
-    signature = GetSignatures(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                              msubbounds(:,:,igrid),maxm)
+      igrid = 1
+      DO WHILE (ngrid<maxsubgrids .AND. igrid<=ngrid)
+         npass = 0
+         DO WHILE (cansplit(igrid) .AND. npass<maxsplitpasses)
+            npass = npass+1
+            signature = GetSignatures(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+               msubbounds(:,:,igrid),maxm)
 !
 ! Trim unflagged points on the edges of this grid:
-    DO n = 1, ndims
-      i1 = msubbounds(n,1,igrid); i2=msubbounds(n,2,igrid)     
+            DO n = 1, ndims
+               i1 = msubbounds(n,1,igrid); i2=msubbounds(n,2,igrid)
 !
-      DO WHILE(signature(i1,n)==0 .AND. i1<msubbounds(n,2,igrid) .AND. &
-               i2-i1+1>mgp)
-        i1 = i1+1
-      END DO
-      DO WHILE(signature(i2,n)==0 .AND. i2>msubbounds(n,1,igrid) .AND. &
-               i2-i1+1>mgp)
-        i2 = i2-1
-      END DO
+               DO WHILE(signature(i1,n)==0 .AND. i1<msubbounds(n,2,igrid) .AND. &
+                  i2-i1+1>mgp)
+                  i1 = i1+1
+               END DO
+               DO WHILE(signature(i2,n)==0 .AND. i2>msubbounds(n,1,igrid) .AND. &
+                  i2-i1+1>mgp)
+                  i2 = i2-1
+               END DO
 !
 ! We only make grid adjustments in increments of 2 (coarse) grid points:
-      msubbounds(n,1,igrid) = i1-MODULO(i1+1,2)
-      msubbounds(n,2,igrid) = i2+MODULO(i2  ,2)  
-    END DO
+               msubbounds(n,1,igrid) = i1-MODULO(i1+1,2)
+               msubbounds(n,2,igrid) = i2+MODULO(i2  ,2)
+            END DO
 !
-    fillratio = GridFlagRatio(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                              msubbounds(:,:,igrid))
-    minm = MINVAL(msubbounds(1:ndims,2,igrid)-msubbounds(1:ndims,1,igrid))+1
-    IF(fillratio<desfillratio) THEN
-      signature = GetSignatures(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
-                                msubbounds(:,:,igrid),maxm)
+            fillratio = GridFlagRatio(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+               msubbounds(:,:,igrid))
+            minm = MINVAL(msubbounds(1:ndims,2,igrid)-msubbounds(1:ndims,1,igrid))+1
+            IF(fillratio<desfillratio) THEN
+               signature = GetSignatures(info%errorflags(1:mx(1),1:mx(2),1:mx(3)), &
+                  msubbounds(:,:,igrid),maxm)
 !
 ! Look for holes along which to split grid:
-      isplit = 0; havesplit = .FALSE.
-      DO n = 1, ndims
-        i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
-        DO i = i1+mgp-1, i2-mgp, 2
+               isplit = 0; havesplit = .FALSE.
+               DO n = 1, ndims
+                  i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
+                  DO i = i1+mgp-1, i2-mgp, 2
 !
 ! i is the second (terminal) index of the first half of the split grid.
-          IF(signature(i,n)==0 .AND. MIN(i-i1+1,i2-i)>=mgp) THEN
-            isplit(n) = i
-            havesplit = .TRUE.
-            EXIT
-          END IF
-        END DO
-        IF(havesplit) EXIT
-      END DO
+                     IF(signature(i,n)==0 .AND. MIN(i-i1+1,i2-i)>=mgp) THEN
+                        isplit(n) = i
+                        havesplit = .TRUE.
+                        EXIT
+                     END IF
+                  END DO
+                  IF(havesplit) EXIT
+               END DO
 !
-      IF(.NOT. havesplit) THEN
+               IF(.NOT. havesplit) THEN
 !
 ! No split along a hole. Try split along inflection point:
-        DO n = 1, ndims
-          i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
-          DO i = i1+1, i2-1
-            ddsignature(i,n) = signature(i-1,n)-2*signature(i,n) &
-                             + signature(i+1,n)
-          END DO
-        END DO
+                  DO n = 1, ndims
+                     i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
+                     DO i = i1+1, i2-1
+                        ddsignature(i,n) = signature(i-1,n)-2*signature(i,n) &
+                           + signature(i+1,n)
+                     END DO
+                  END DO
 !
-        inflect = 0; dist0 = 0
-        DO n = 1, ndims
-          i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
-          DO i = i1+mgp, i2-mgp+1, 2
+                  inflect = 0; dist0 = 0
+                  DO n = 1, ndims
+                     i1 = msubbounds(n,1,igrid); i2 = msubbounds(n,2,igrid)
+                     DO i = i1+mgp, i2-mgp+1, 2
 !
 ! Here i is the first index of the second half of the split grid.
-            del = ABS(ddsignature(i,n)-ddsignature(i-1,n))
-            IF(del>inflect) THEN
-              inflect = del; isplit = 0; isplit(n) = i-1; havesplit = .TRUE.
-              dist0 = MIN(i-i1,i2-i+1)
-            ELSE IF(del==inflect .AND. inflect>0) THEN
-              dist1 = MIN(i-i1,i2-i+1)
-              IF(dist1>dist0) THEN
-                isplit = 0; isplit(n) = i-1; havesplit = .TRUE.
-                dist0 = dist1
-              END IF
-            END IF
-          END DO
-        END DO
-      END IF
+                        del = ABS(ddsignature(i,n)-ddsignature(i-1,n))
+                        IF(del>inflect) THEN
+                           inflect = del; isplit = 0; isplit(n) = i-1; havesplit = .TRUE.
+                           dist0 = MIN(i-i1,i2-i+1)
+                        ELSE IF(del==inflect .AND. inflect>0) THEN
+                           dist1 = MIN(i-i1,i2-i+1)
+                           IF(dist1>dist0) THEN
+                              isplit = 0; isplit(n) = i-1; havesplit = .TRUE.
+                              dist0 = dist1
+                           END IF
+                        END IF
+                     END DO
+                  END DO
+               END IF
 !
-      IF(havesplit) THEN
+               IF(havesplit) THEN
 !
 ! Split the grid along a determined line:
-        DO n = 1, ndims
-          IF(isplit(n)>0 .AND. &
-             MIN(msubbounds(n,2,igrid)-isplit(n), &
-                 isplit(n)-msubbounds(n,1,igrid)+1)>=mgp) THEN
+                  DO n = 1, ndims
+                     IF(isplit(n)>0 .AND. &
+                        MIN(msubbounds(n,2,igrid)-isplit(n), &
+                        isplit(n)-msubbounds(n,1,igrid)+1)>=mgp) THEN
 !
 ! Add a new subgrid to the end of the grid list:
-            ngrid = ngrid+1
-            cansplit(ngrid) = .TRUE.
-            msubbounds(1:ndims,1:2,ngrid) = msubbounds(1:ndims,1:2,igrid)
-            msubbounds(n,1,ngrid) = isplit(n)+1
+                        ngrid = ngrid+1
+                        cansplit(ngrid) = .TRUE.
+                        msubbounds(1:ndims,1:2,ngrid) = msubbounds(1:ndims,1:2,igrid)
+                        msubbounds(n,1,ngrid) = isplit(n)+1
 !
 ! Replace current grid with a subgrid:
-            msubbounds(n,2,igrid) = isplit(n)
-            EXIT
-          END IF
-        END DO
-      ELSE
+                        msubbounds(n,2,igrid) = isplit(n)
+                        EXIT
+                     END IF
+                  END DO
+               ELSE
 !
 ! Mark grid if no split is possible:
-        cansplit(igrid) = .FALSE.
-      END IF
-    ELSE
-      cansplit(igrid) = .FALSE.
-    END IF
-  END DO
-  igrid = igrid+1
-END DO
+                  cansplit(igrid) = .FALSE.
+               END IF
+            ELSE
+               cansplit(igrid) = .FALSE.
+            END IF
+         END DO
+         igrid = igrid+1
+      END DO
 !
 ! Generate the newly determined subgrids:
-info%nsubgrids = ngrid
-DO i = 1, ngrid
-  CALL MakeNewGrid(info,msubbounds(:,:,i))
-  IF(MINVAL(msubbounds(1:ndims,2,i)-msubbounds(1:ndims,1,i)+1)<mgp) THEN
-    PRINT *, 'BSAM 2.0: Error in NewSubGrids, grid smaller than minimumgridpoints'
-    STOP
-  END IF
-  DO n = 1, ndims
-    IF(MODULO(msubbounds(n,2,i)-msubbounds(n,1,i)+1,2)==1) THEN
-      PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', grid length not even number'
-      STOP
-    END IF
-    IF(MODULO(msubbounds(n,1,i),2)==0) THEN
-      PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', index starts on even number'
-      STOP
-    END IF
-    IF(MODULO(msubbounds(n,2,i),2)==1) THEN
-      PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', index end on odd number'
-      STOP
-    END IF
-  END DO
-END DO
+      info%nsubgrids = ngrid
+      DO i = 1, ngrid
+         CALL MakeNewGrid(info,msubbounds(:,:,i))
+         IF(MINVAL(msubbounds(1:ndims,2,i)-msubbounds(1:ndims,1,i)+1)<mgp) THEN
+            PRINT *, 'BSAM 2.0: Error in NewSubGrids, grid smaller than minimumgridpoints'
+            STOP
+         END IF
+         DO n = 1, ndims
+            IF(MODULO(msubbounds(n,2,i)-msubbounds(n,1,i)+1,2)==1) THEN
+               PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', grid length not even number'
+               STOP
+            END IF
+            IF(MODULO(msubbounds(n,1,i),2)==0) THEN
+               PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', index starts on even number'
+               STOP
+            END IF
+            IF(MODULO(msubbounds(n,2,i),2)==1) THEN
+               PRINT *, 'BSAM 2.0: Error in NewSubGrids, igrid=', i, ', index end on odd number'
+               STOP
+            END IF
+         END DO
+      END DO
 !
-DEALLOCATE(signature,ddsignature,STAT=ierror)
-IF(ierror/=0) THEN
-  PRINT *,'BSAM 2.0: Error deallocating signatures arrays in NewSubGrids'
-  STOP
-END IF
+      DEALLOCATE(signature,ddsignature,STAT=ierror)
+      IF(ierror/=0) THEN
+         PRINT *,'BSAM 2.0: Error deallocating signatures arrays in NewSubGrids'
+         STOP
+      END IF
 !
-END SUBROUTINE NewSubGrids
+   END SUBROUTINE NewSubGrids
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-FUNCTION GetSignatures(errorflags,msubbounds,maxm) RESULT(gsresult)
-USE NodeInfoDef
-IMPLICIT NONE
+   FUNCTION GetSignatures(errorflags,msubbounds,maxm) RESULT(gsresult)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:,1:,1:), INTENT(IN):: errorflags
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: msubbounds
-INTEGER, INTENT(IN):: maxm
-INTEGER, DIMENSION(1:maxm,1:ndims):: gsresult
+      INTEGER, DIMENSION(1:,1:,1:), INTENT(IN):: errorflags
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: msubbounds
+      INTEGER, INTENT(IN):: maxm
+      INTEGER, DIMENSION(1:maxm,1:ndims):: gsresult
 !
-INTEGER:: i, n
-INTEGER, DIMENSION(1:maxdims):: i1, i2
+      INTEGER:: i, n
+      INTEGER, DIMENSION(1:maxdims):: i1, i2
 !
-i1 = 1; i2 = 1
-DO n = 1, ndims
-  i1(1:ndims) = msubbounds(1:ndims,1)
-  i2(1:ndims) = msubbounds(1:ndims,2)
-  DO i = msubbounds(n,1), msubbounds(n,2)
-    i1(n) = i; i2(n) = i
+      i1 = 1; i2 = 1
+      DO n = 1, ndims
+         i1(1:ndims) = msubbounds(1:ndims,1)
+         i2(1:ndims) = msubbounds(1:ndims,2)
+         DO i = msubbounds(n,1), msubbounds(n,2)
+            i1(n) = i; i2(n) = i
 !
-    gsresult(i,n) = SUM(errorflags(i1(1):i2(1),i1(2):i2(2),i1(3):i2(3)))
+            gsresult(i,n) = SUM(errorflags(i1(1):i2(1),i1(2):i2(2),i1(3):i2(3)))
 !
-  END DO
-END DO
+         END DO
+      END DO
 !
-END FUNCTION GetSignatures
+   END FUNCTION GetSignatures
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-FUNCTION GridFlagRatio(errorflags,mbounds) RESULT(gfrresult)
-USE NodeInfoDef
-IMPLICIT NONE
+   FUNCTION GridFlagRatio(errorflags,mbounds) RESULT(gfrresult)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:,1:,1:), INTENT(IN):: errorflags
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN OUT):: mbounds
-REAL(KIND=r8):: gfrresult
+      INTEGER, DIMENSION(1:,1:,1:), INTENT(IN):: errorflags
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN OUT):: mbounds
+      REAL(KIND=r8):: gfrresult
 !
-REAL(KIND=r8):: flagged, total
+      REAL(KIND=r8):: flagged, total
 !
-total = REAL(PRODUCT(mbounds(1:ndims,2)-mbounds(1:ndims,1)+1),KIND=r8)
+      total = REAL(PRODUCT(mbounds(1:ndims,2)-mbounds(1:ndims,1)+1),KIND=r8)
 !
-mbounds(ndims+1:maxdims,1:2) = 1
+      mbounds(ndims+1:maxdims,1:2) = 1
 !
-flagged = REAL(SUM(errorflags(mbounds(1,1):mbounds(1,2), &
-                              mbounds(2,1):mbounds(2,2), &
-                              mbounds(3,1):mbounds(3,2))),KIND=r8)
+      flagged = REAL(SUM(errorflags(mbounds(1,1):mbounds(1,2), &
+         mbounds(2,1):mbounds(2,2), &
+         mbounds(3,1):mbounds(3,2))),KIND=r8)
 !
-IF(flagged<-1.0E-08_r8) THEN
-  PRINT *, 'BSAM 2.0: Error in GridFlagRatio: flagged < 0.'
-  STOP
-END IF
+      IF(flagged<-1.0E-08_r8) THEN
+         PRINT *, 'BSAM 2.0: Error in GridFlagRatio: flagged < 0.'
+         STOP
+      END IF
 !
-gfrresult = flagged/total
+      gfrresult = flagged/total
 !
-END FUNCTION GridFlagRatio
+   END FUNCTION GridFlagRatio
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE MakeNewGrid(parent,mbounds)
-USE NodeInfoDef
-USE TreeOps, ONLY: CreateChild, GetChildInfo
-USE BSAMStorage, ONLY: AllocFields
-USE Problem, ONLY: SetAux, SetSrc
-IMPLICIT NONE
+   SUBROUTINE MakeNewGrid(parent,mbounds)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: CreateChild, GetChildInfo
+      USE BSAMStorage, ONLY: AllocFields
+      USE Problem, ONLY: SetAux, SetSrc
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: parent
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: mbounds
+      TYPE(nodeinfo):: parent
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: mbounds
 !
 ! Generate a new, finer grid within mbounds of the grid info:
 !
-TYPE(nodeinfo), POINTER:: child
-INTEGER:: i, ierror, n, nb
-INTEGER, DIMENSION(1:maxdims):: cmx
-INTEGER, DIMENSION(1:maxdims,1:2):: mglobalbounds
-REAL(KIND=r8):: rand
+      TYPE(nodeinfo), POINTER:: child
+      INTEGER:: i, ierror, n, nb
+      INTEGER, DIMENSION(1:maxdims):: cmx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mglobalbounds
+      REAL(KIND=r8):: rand
 !
 ! Create a child of the currentnode:
-CALL CreateChild
+      CALL CreateChild
 !
 ! Initialize the grid information for the new node:
 ! Get pointer to youngest child's info:
-ierror = GetChildInfo(child)
+      ierror = GetChildInfo(child)
 !
 ! Start filling in the fields of child's info:
-child%tobedeleted = .FALSE.
-child%activegrid = .TRUE.
-child%defective = .FALSE.
-child%fieldsallocated = .FALSE.
-child%initialgrid = parent%initialgrid
+      child%tobedeleted = .FALSE.
+      child%activegrid = .TRUE.
+      child%defective = .FALSE.
+      child%fieldsallocated = .FALSE.
+      child%initialgrid = parent%initialgrid
 !
-child%maxlevel = parent%maxlevel; child%nsubgrids = 0
-child%level = parent%level+1
-IF(child%level>finestlevel) finestlevel = child%level
+      child%maxlevel = parent%maxlevel; child%nsubgrids = 0
+      child%level = parent%level+1
+      IF(child%level>finestlevel) finestlevel = child%level
 !
-child%mx = 1; child%mx(1:ndims) = (mbounds(1:ndims,2)-mbounds(1:ndims,1)+1)*2
-child%mbounds = 1; child%mbounds(1:ndims,:) = mbounds(1:ndims,:)
-child%mglobal = 1
-mglobalbounds(1:ndims,1) = parent%mglobal(1:ndims,1)+mbounds(1:ndims,1)-1
-mglobalbounds(1:ndims,2) = mglobalbounds(1:ndims,1)+mbounds(1:ndims,2) &
-                         - mbounds(1:ndims,1)
-child%mglobal(1:ndims,1) = (mglobalbounds(1:ndims,1)-1)*2+1
-child%mglobal(1:ndims,2) = mglobalbounds(1:ndims,2)*2
+      child%mx = 1; child%mx(1:ndims) = (mbounds(1:ndims,2)-mbounds(1:ndims,1)+1)*2
+      child%mbounds = 1; child%mbounds(1:ndims,:) = mbounds(1:ndims,:)
+      child%mglobal = 1
+      mglobalbounds(1:ndims,1) = parent%mglobal(1:ndims,1)+mbounds(1:ndims,1)-1
+      mglobalbounds(1:ndims,2) = mglobalbounds(1:ndims,1)+mbounds(1:ndims,2) &
+         - mbounds(1:ndims,1)
+      child%mglobal(1:ndims,1) = (mglobalbounds(1:ndims,1)-1)*2+1
+      child%mglobal(1:ndims,2) = mglobalbounds(1:ndims,2)*2
 !
 ! First assume all boundaries are internal:
-child%mthbc = internalbc
+      child%mthbc = internalbc
 !
 ! Now check if we have any physical boundaries:
-DO n = 1, ndims
-  nb = 2*n-1
+      DO n = 1, ndims
+         nb = 2*n-1
 !
-! If parent boundary condition is physical and child left is same as parent's 
+! If parent boundary condition is physical and child left is same as parent's
 ! left:
-  IF((parent%mthbc(nb)<internalbc) .AND. &
-     (child%mbounds(n,1)==1)) THEN
+         IF((parent%mthbc(nb)<internalbc) .AND. &
+            (child%mbounds(n,1)==1)) THEN
 !
 ! Then child left boundary is physical and inherited from parent:
-    child%mthbc(nb)=parent%mthbc(nb)
-  END IF
-  nb = nb+1
+            child%mthbc(nb)=parent%mthbc(nb)
+         END IF
+         nb = nb+1
 !
-! If parent boundary condition is physical and child right is same as parent's 
+! If parent boundary condition is physical and child right is same as parent's
 ! right:
-  IF((parent%mthbc(nb)<internalbc) .AND. &
-     (child%mbounds(n,2)==parent%mx(n))) THEN
+         IF((parent%mthbc(nb)<internalbc) .AND. &
+            (child%mbounds(n,2)==parent%mx(n))) THEN
 !
 ! Then child right boundary is physical and inherited from parent
-    child%mthbc(nb) = parent%mthbc(nb)
-  END IF
-END DO
+            child%mthbc(nb) = parent%mthbc(nb)
+         END IF
+      END DO
 !
 ! ID the grids randomly:
-CALL RANDOM_NUMBER(rand)
-child%ngrid = NINT(10000000*rand)
+      CALL RANDOM_NUMBER(rand)
+      child%ngrid = NINT(10000000*rand)
 !
-child%gridtime = parent%gridtime
+      child%gridtime = parent%gridtime
 !
-child%xlower = 0.0_r8; child%xupper = 0.0_r8
-child%xlower(1:ndims) = REAL(mbounds(1:ndims,1)-1,KIND=r8)*parent%dx(1:ndims) &
-                      + parent%xlower(1:ndims)
-child%xupper(1:ndims) = REAL(mbounds(1:ndims,2)  ,KIND=r8)*parent%dx(1:ndims) &
-                      + parent%xlower(1:ndims)
-child%dx = 0.0_r8; child%dx(1:ndims) = parent%dx(1:ndims)/REAL(2,KIND=r8)
+      child%xlower = 0.0_r8; child%xupper = 0.0_r8
+      child%xlower(1:ndims) = REAL(mbounds(1:ndims,1)-1,KIND=r8)*parent%dx(1:ndims) &
+         + parent%xlower(1:ndims)
+      child%xupper(1:ndims) = REAL(mbounds(1:ndims,2)  ,KIND=r8)*parent%dx(1:ndims) &
+         + parent%xlower(1:ndims)
+      child%dx = 0.0_r8; child%dx(1:ndims) = parent%dx(1:ndims)/REAL(2,KIND=r8)
 !
 ! Allocate dynamic space:
-CALL AllocFields(child,parent)
+      CALL AllocFields(child,parent)
 !
-cmx = 1
-cmx(1:ndims) = child%mx(1:ndims)/2
-child%levellandscape = parent%level
-child%levellandscape(1:cmx(1),1:cmx(2),1:cmx(3)) = child%level
+      cmx = 1
+      cmx(1:ndims) = child%mx(1:ndims)/2
+      child%levellandscape = parent%level
+      child%levellandscape(1:cmx(1),1:cmx(2),1:cmx(3)) = child%level
 !
 ! Initialize field variables with values from parent or from initial data:
-CALL InitFields(parent,child)
+      CALL InitFields(parent,child)
 !
 ! Call user routine to initialize auxiliary and source-term array values:
-IF(naxv>0) CALL SetAux(child)
-CALL SetSrc(child)
+      IF(naxv>0) CALL SetAux(child)
+      CALL SetSrc(child)
 !
 ! Delete later:
-child%rf = 0.0
-child%rf1 = 0.0
+      child%rf = 0.0
+      child%rf1 = 0.0
 !
- child%qold = child%q
-child%qcold = child%qc
+      child%qold = child%q
+      child%qcold = child%qc
 !
-END SUBROUTINE MakeNewGrid
+   END SUBROUTINE MakeNewGrid
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE InitFields(parent,child)
-USE NodeInfoDef
-USE GridUtilities, ONLY:       Prolongation2DV1Ex,       Prolongation2DV2Ex, &
-                          BiLinProlongationP1MC  ,  BiLinProlongationP2MC,   &
-                         TriLinProlongationP1MC  , TriLinProlongationP2MC,   &
-                               Prolongation3DV1Ex,       Prolongation3DV2Ex, &
-                               Prolongation3DV3Ex
-IMPLICIT NONE
+   SUBROUTINE InitFields(parent,child)
+      USE NodeInfoDef
+      USE GridUtilities, ONLY:       Prolongation2DV1Ex,       Prolongation2DV2Ex, &
+         BiLinProlongationP1MC  ,  BiLinProlongationP2MC,   &
+         TriLinProlongationP1MC  , TriLinProlongationP2MC,   &
+         Prolongation3DV1Ex,       Prolongation3DV2Ex, &
+         Prolongation3DV3Ex
+      IMPLICIT NONE
 !
 ! Redone to support only bilinear interpolation and 1st layer updating.
 !
-TYPE(nodeinfo):: parent, child
+      TYPE(nodeinfo):: parent, child
 !
-INTEGER:: ierror, interpopt
-INTEGER, DIMENSION(1:maxdims):: cmx, mx
-INTEGER, DIMENSION(1:maxdims,1:2):: mb
+      INTEGER:: ierror, interpopt
+      INTEGER, DIMENSION(1:maxdims):: cmx, mx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mb
 !
 ! Check whether we can apply user-provided Initialize for initialization.
-IF(child%initialgrid) THEN
-  CALL Initialize(child)
-  RETURN
-END IF
+      IF(child%initialgrid) THEN
+         CALL Initialize(child)
+         RETURN
+      END IF
 !
- mx = 1;  mx(1:ndims)     = child%mx(1:ndims)
-cmx = 1; cmx(1:ndims)     =       mx(1:ndims)/2
- mb = 1;  mb(1:ndims,1:2) = child%mbounds(1:ndims,1:2)
+      mx = 1;  mx(1:ndims)     = child%mx(1:ndims)
+      cmx = 1; cmx(1:ndims)     =       mx(1:ndims)/2
+      mb = 1;  mb(1:ndims,1:2) = child%mbounds(1:ndims,1:2)
 !
-SELECT CASE(ndims)
-  CASE(2)
-    child%qc(1-mbc:cmx(1)+mbc,1-mbc:cmx(2)+mbc,1,1:nccv) &
-      = parent%q(mb(1,1)-mbc:mb(1,2)+mbc, &
-                 mb(2,1)-mbc:mb(2,2)+mbc,1,1:nccv)
+      SELECT CASE(ndims)
+       CASE(2)
+         child%qc(1-mbc:cmx(1)+mbc,1-mbc:cmx(2)+mbc,1,1:nccv) &
+            = parent%q(mb(1,1)-mbc:mb(1,2)+mbc, &
+            mb(2,1)-mbc:mb(2,2)+mbc,1,1:nccv)
 !
-    child%qcold(1-mbc:cmx(1)+mbc,1-mbc:cmx(2)+mbc,1,1:nccv) &
-      = parent%qold(mb(1,1)-mbc:mb(1,2)+mbc, &
-                    mb(2,1)-mbc:mb(2,2)+mbc,1,1:nccv)
-!                    
-    child%v1c(-1:cmx(1)+1,0:cmx(2)+1,1,1:nfcv) &
-      = parent%v1(mb(1,1)-2:mb(1,2)+1, &
-                  mb(2,1)-1:mb(2,2)+1,1,1:nfcv)
+         child%qcold(1-mbc:cmx(1)+mbc,1-mbc:cmx(2)+mbc,1,1:nccv) &
+            = parent%qold(mb(1,1)-mbc:mb(1,2)+mbc, &
+            mb(2,1)-mbc:mb(2,2)+mbc,1,1:nccv)
 !
-    child%v2c(0:cmx(1)+1,-1:cmx(2)+1,1,1:nfcv) &
-      = parent%v2(mb(1,1)-1:mb(1,2)+1, &
-                  mb(2,1)-2:mb(2,2)+1,1,1:nfcv)
+         child%v1c(-1:cmx(1)+1,0:cmx(2)+1,1,1:nfcv) &
+            = parent%v1(mb(1,1)-2:mb(1,2)+1, &
+            mb(2,1)-1:mb(2,2)+1,1,1:nfcv)
 !
-    SELECT CASE(mbc)
-      CASE(1)
+         child%v2c(0:cmx(1)+1,-1:cmx(2)+1,1,1:nfcv) &
+            = parent%v2(mb(1,1)-1:mb(1,2)+1, &
+            mb(2,1)-2:mb(2,2)+1,1,1:nfcv)
+!
+         SELECT CASE(mbc)
+          CASE(1)
             child%q(  0: mx(1)+1, 0: mx(2)+1,1,1:nccv) &
-          = BiLinProlongationP1MC( &
-            child%qc( 0:cmx(1)+1, 0:cmx(2)+1,1,1:nccv))
-      CASE(2)
+               = BiLinProlongationP1MC( &
+               child%qc( 0:cmx(1)+1, 0:cmx(2)+1,1,1:nccv))
+          CASE(2)
             child%q( -1: mx(1)+2,-1: mx(2)+2,1,1:nccv) &
-          = BiLinProlongationP2MC( &
-            child%qc(-1:cmx(1)+2,-1:cmx(2)+2,1,1:nccv))
-      CASE DEFAULT
-        PRINT *, 'InitFields: only supports mbc=1,2.'
-    END SELECT
-!    
+               = BiLinProlongationP2MC( &
+               child%qc(-1:cmx(1)+2,-1:cmx(2)+2,1,1:nccv))
+          CASE DEFAULT
+            PRINT *, 'InitFields: only supports mbc=1,2.'
+         END SELECT
+!
 ! Face centered variables:
-      child%v1( -1: mx(1)+1, 0: mx(2)+1,1,1:nfcv) &
-    = Prolongation2DV1Ex( &
-      child%v1c(-1:cmx(1)+1, 0:cmx(2)+1,1,1:nfcv))
+         child%v1( -1: mx(1)+1, 0: mx(2)+1,1,1:nfcv) &
+            = Prolongation2DV1Ex( &
+            child%v1c(-1:cmx(1)+1, 0:cmx(2)+1,1,1:nfcv))
 !
-      child%v2(  0: mx(1)+1,-1: mx(2)+1,1,1:nfcv) &
-    = Prolongation2DV2Ex( &
-      child%v2c( 0:cmx(1)+1,-1:cmx(2)+1,1,1:nfcv))
+         child%v2(  0: mx(1)+1,-1: mx(2)+1,1,1:nfcv) &
+            = Prolongation2DV2Ex( &
+            child%v2c( 0:cmx(1)+1,-1:cmx(2)+1,1,1:nfcv))
 !
-  CASE(3)
-        child%qc (      1-mbc:cmx(1)  +mbc,        &
-                        1-mbc:cmx(2)  +mbc,        &
-                        1-mbc:cmx(3)  +mbc,1:nccv) &
-      = parent%q (mb(1,1)-mbc: mb(1,2)+mbc,        &
-                  mb(2,1)-mbc: mb(2,2)+mbc,        &
-                  mb(3,1)-mbc: mb(3,2)+mbc,1:nccv)
+       CASE(3)
+         child%qc (      1-mbc:cmx(1)  +mbc,        &
+            1-mbc:cmx(2)  +mbc,        &
+            1-mbc:cmx(3)  +mbc,1:nccv) &
+            = parent%q (mb(1,1)-mbc: mb(1,2)+mbc,        &
+            mb(2,1)-mbc: mb(2,2)+mbc,        &
+            mb(3,1)-mbc: mb(3,2)+mbc,1:nccv)
 !
-      child%qcold(      1-mbc:cmx(1)  +mbc,        &
-                        1-mbc:cmx(2)  +mbc,        &
-                        1-mbc:cmx(3)  +mbc,1:nccv) &
-    = parent%qold(mb(1,1)-mbc: mb(1,2)+mbc,        &
-                  mb(2,1)-mbc: mb(2,2)+mbc,        &
-                  mb(3,1)-mbc: mb(3,2)+mbc,1:nccv)
+         child%qcold(      1-mbc:cmx(1)  +mbc,        &
+            1-mbc:cmx(2)  +mbc,        &
+            1-mbc:cmx(3)  +mbc,1:nccv) &
+            = parent%qold(mb(1,1)-mbc: mb(1,2)+mbc,        &
+            mb(2,1)-mbc: mb(2,2)+mbc,        &
+            mb(3,1)-mbc: mb(3,2)+mbc,1:nccv)
 !
-        child%v1c(         -1:cmx(1)  +1  ,        &
-                            0:cmx(2)  +1  ,        &
-                            0:cmx(3)  +1  ,1:nfcv) &
-      = parent%v1(mb(1,1)-2  : mb(1,2)+1  ,        &
-                  mb(2,1)-1  : mb(2,2)+1  ,        &
-                  mb(3,1)-1  : mb(3,2)+1  ,1:nfcv)
+         child%v1c(         -1:cmx(1)  +1  ,        &
+            0:cmx(2)  +1  ,        &
+            0:cmx(3)  +1  ,1:nfcv) &
+            = parent%v1(mb(1,1)-2  : mb(1,2)+1  ,        &
+            mb(2,1)-1  : mb(2,2)+1  ,        &
+            mb(3,1)-1  : mb(3,2)+1  ,1:nfcv)
 !
-        child%v2c(          0:cmx(1)  +1  ,        &
-                           -1:cmx(2)  +1  ,        &
-                            0:cmx(3)  +1  ,1:nfcv) &
-      = parent%v2(mb(1,1)-1  : mb(1,2)+1  ,        &
-                  mb(2,1)-2  : mb(2,2)+1  ,        &
-                  mb(3,1)-1  : mb(3,2)+1  ,1:nfcv)
+         child%v2c(          0:cmx(1)  +1  ,        &
+            -1:cmx(2)  +1  ,        &
+            0:cmx(3)  +1  ,1:nfcv) &
+            = parent%v2(mb(1,1)-1  : mb(1,2)+1  ,        &
+            mb(2,1)-2  : mb(2,2)+1  ,        &
+            mb(3,1)-1  : mb(3,2)+1  ,1:nfcv)
 !
-        child%v3c(          0:cmx(1)  +1  ,        &
-                            0:cmx(2)  +1  ,        &
-                           -1:cmx(3)  +1  ,1:nfcv) &
-      = parent%v3(mb(1,1)-1  : mb(1,2)+1  ,        &
-                  mb(2,1)-1  : mb(2,2)+1  ,        &
-                  mb(3,1)-2  : mb(3,2)+1  ,1:nfcv)
+         child%v3c(          0:cmx(1)  +1  ,        &
+            0:cmx(2)  +1  ,        &
+            -1:cmx(3)  +1  ,1:nfcv) &
+            = parent%v3(mb(1,1)-1  : mb(1,2)+1  ,        &
+            mb(2,1)-1  : mb(2,2)+1  ,        &
+            mb(3,1)-2  : mb(3,2)+1  ,1:nfcv)
 !
-    SELECT CASE(mbc)
-      CASE(1)
+         SELECT CASE(mbc)
+          CASE(1)
             child%q(  0: mx(1)+1, 0: mx(2)+1, 0: mx(3)+1,1:nccv) &
-          = TriLinProlongationP1MC( &
-            child%qc( 0:cmx(1)+1, 0:cmx(2)+1, 0:cmx(3)+1,1:nccv))
-      CASE(2)
+               = TriLinProlongationP1MC( &
+               child%qc( 0:cmx(1)+1, 0:cmx(2)+1, 0:cmx(3)+1,1:nccv))
+          CASE(2)
             child%q( -1: mx(1)+2,-1: mx(2)+2,-1: mx(3)+2,1:nccv) &
-          = TriLinProlongationP2MC( &
-            child%qc(-1:cmx(1)+2,-1:cmx(2)+2,-1:cmx(3)+2,1:nccv))
-      CASE DEFAULT
-        PRINT *, 'InitFields: only supports mbc=1,2.'
-    END SELECT
-!    
+               = TriLinProlongationP2MC( &
+               child%qc(-1:cmx(1)+2,-1:cmx(2)+2,-1:cmx(3)+2,1:nccv))
+          CASE DEFAULT
+            PRINT *, 'InitFields: only supports mbc=1,2.'
+         END SELECT
+!
 ! Face centered variables:
 !
-      child%v1 ( -1: mx(1)+1, 0: mx(2)+1, 0: mx(3)+1,1:nfcv) &
-    = Prolongation3DV1Ex( &
-      child%v1c( -1:cmx(1)+1, 0:cmx(2)+1, 0:cmx(3)+1,1:nfcv))
+         child%v1 ( -1: mx(1)+1, 0: mx(2)+1, 0: mx(3)+1,1:nfcv) &
+            = Prolongation3DV1Ex( &
+            child%v1c( -1:cmx(1)+1, 0:cmx(2)+1, 0:cmx(3)+1,1:nfcv))
 !
-      child%v2 (  0: mx(1)+1,-1: mx(2)+1, 0: mx(3)+1,1:nfcv) &
-    = Prolongation3DV2Ex( &
-      child%v2c(  0:cmx(1)+1,-1:cmx(2)+1, 0:cmx(3)+1,1:nfcv))
+         child%v2 (  0: mx(1)+1,-1: mx(2)+1, 0: mx(3)+1,1:nfcv) &
+            = Prolongation3DV2Ex( &
+            child%v2c(  0:cmx(1)+1,-1:cmx(2)+1, 0:cmx(3)+1,1:nfcv))
 !
-      child%v3 (  0: mx(1)+1, 0: mx(2)+1,-1: mx(3)+1,1:nfcv) &
-    = Prolongation3DV3Ex( &
-      child%v3c(  0:cmx(1)+1, 0:cmx(2)+1,-1:cmx(3)+1,1:nfcv))
+         child%v3 (  0: mx(1)+1, 0: mx(2)+1,-1: mx(3)+1,1:nfcv) &
+            = Prolongation3DV3Ex( &
+            child%v3c(  0:cmx(1)+1, 0:cmx(2)+1,-1:cmx(3)+1,1:nfcv))
 !
-  CASE DEFAULT
-    PRINT *, 'InitFields: only supports ndims=2,3.'
-END SELECT
+       CASE DEFAULT
+         PRINT *, 'InitFields: only supports ndims=2,3.'
+      END SELECT
 !
-END SUBROUTINE InitFields
+   END SUBROUTINE InitFields
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION TransferValues(grid1,grid2,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION TransferValues(grid1,grid2,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: grid1, grid2
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: grid1, grid2
+      TYPE(funcparam):: dummy
 !
 ! Transfer values from previous grids on this level to newly created grids:
-!    
-TransferValues = err_ok
 !
-IF(grid1%activegrid .AND. (.NOT. grid2%activegrid)) THEN
+      TransferValues = err_ok
+!
+      IF(grid1%activegrid .AND. (.NOT. grid2%activegrid)) THEN
 !
 ! Look for overlap and transfer grid values from Grid2 to Grid1
-  CALL Transferq(grid2,grid1)
-END IF
+         CALL Transferq(grid2,grid1)
+      END IF
 !
-IF(grid2%activegrid .AND. (.NOT. grid1%activegrid)) THEN
+      IF(grid2%activegrid .AND. (.NOT. grid1%activegrid)) THEN
 !
 ! Look for overlap and transfer grid values from Grid1 to Grid2
-  CALL Transferq(grid1,grid2)
-END IF
+         CALL Transferq(grid1,grid2)
+      END IF
 !
 ! We either have two new grids or two old grids, nothing to be done:
-RETURN
-END FUNCTION TransferValues
+      RETURN
+   END FUNCTION TransferValues
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE Transferq(sourceinfo,targetinfo)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE Transferq(sourceinfo,targetinfo)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: sourceinfo
-TYPE(nodeinfo):: targetinfo
+      TYPE(nodeinfo):: sourceinfo
+      TYPE(nodeinfo):: targetinfo
 !
 ! Look for overlap and transfer grid values from source to target
-!    
-INTEGER, DIMENSION(1:maxdims,1:2):: mtarget, msource
 !
-IF(.NOT. sourceinfo%fieldsallocated) THEN
-  PRINT *, 'BSAM 2.0 Error: Trying to transfer values from unallocated'
-  PRINT *, '                sourceinfo in Transferq.'
-  STOP
-END IF
+      INTEGER, DIMENSION(1:maxdims,1:2):: mtarget, msource
 !
-IF(.NOT. targetinfo%fieldsallocated) THEN
-  PRINT *, 'BSAM 2.0 Error: Trying to transfer values to unallocated'
-  PRINT *, '                targetinfo in Transferq.'
-  STOP
-END IF
+      IF(.NOT. sourceinfo%fieldsallocated) THEN
+         PRINT *, 'BSAM 2.0 Error: Trying to transfer values from unallocated'
+         PRINT *, '                sourceinfo in Transferq.'
+         STOP
+      END IF
+!
+      IF(.NOT. targetinfo%fieldsallocated) THEN
+         PRINT *, 'BSAM 2.0 Error: Trying to transfer values to unallocated'
+         PRINT *, '                targetinfo in Transferq.'
+         STOP
+      END IF
 !
 ! Look for overlap (Later, maybe copy over ghost cells as well):
-msource = sourceinfo%mglobal; mtarget = targetinfo%mglobal
+      msource = sourceinfo%mglobal; mtarget = targetinfo%mglobal
 !
-CALL TransferOverlap(msource,mtarget,sourceinfo,targetinfo)
+      CALL TransferOverlap(msource,mtarget,sourceinfo,targetinfo)
 !
-END SUBROUTINE Transferq
+   END SUBROUTINE Transferq
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE TransferOverlap(msource,mtarget,sourceinfo,targetinfo)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE TransferOverlap(msource,mtarget,sourceinfo,targetinfo)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: msource
-INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: mtarget
-TYPE(nodeinfo):: sourceinfo
-TYPE(nodeinfo):: targetinfo
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: msource
+      INTEGER, DIMENSION(1:maxdims,1:2), INTENT(IN):: mtarget
+      TYPE(nodeinfo):: sourceinfo
+      TYPE(nodeinfo):: targetinfo
 !
-INTEGER:: n
-INTEGER, DIMENSION(1:maxdims,1:2):: moverlap, ms, mt
+      INTEGER:: n
+      INTEGER, DIMENSION(1:maxdims,1:2):: moverlap, ms, mt
 !
 ! Transfer values from source to target in overlap region:
 ! 1. Find overlap region in global index space:
-moverlap = 1
-moverlap(1:ndims,1) = MAX(msource(1:ndims,1),mtarget(1:ndims,1))
-moverlap(1:ndims,2) = MIN(msource(1:ndims,2),mtarget(1:ndims,2))
+      moverlap = 1
+      moverlap(1:ndims,1) = MAX(msource(1:ndims,1),mtarget(1:ndims,1))
+      moverlap(1:ndims,2) = MIN(msource(1:ndims,2),mtarget(1:ndims,2))
 !
 ! 2. Check for nonempty intersection:
-IF(ANY(moverlap(:,2)-moverlap(:,1)<0)) RETURN
+      IF(ANY(moverlap(:,2)-moverlap(:,1)<0)) RETURN
 !
 ! 3. Transform common index space to grid index spaces:
-ms = 1; mt = 1
-DO n = 1, ndims
-  ms(n,:) = moverlap(n,:)-sourceinfo%mglobal(n,1)+1
-  mt(n,:) = moverlap(n,:)-targetinfo%mglobal(n,1)+1
-END DO
+      ms = 1; mt = 1
+      DO n = 1, ndims
+         ms(n,:) = moverlap(n,:)-sourceinfo%mglobal(n,1)+1
+         mt(n,:) = moverlap(n,:)-targetinfo%mglobal(n,1)+1
+      END DO
 !
 ! 4. Carry out the transfer:
-    targetinfo%q(mt(1,1):mt(1,2),mt(2,1):mt(2,2),mt(3,1):mt(3,2),:) &
-  = sourceinfo%q(ms(1,1):ms(1,2),ms(2,1):ms(2,2),ms(3,1):ms(3,2),:)
+      targetinfo%q(mt(1,1):mt(1,2),mt(2,1):mt(2,2),mt(3,1):mt(3,2),:) &
+         = sourceinfo%q(ms(1,1):ms(1,2),ms(2,1):ms(2,2),ms(3,1):ms(3,2),:)
 !
-END SUBROUTINE TransferOverlap
+   END SUBROUTINE TransferOverlap
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION FindCoarseLevelNeighbors(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok, GetParentInfo
-IMPLICIT NONE
+   INTEGER FUNCTION FindCoarseLevelNeighbors(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok, GetParentInfo
+      IMPLICIT NONE
 !
 ! This routine determines the level values of neighbor grids touching the
 ! current grid on the coarse level. Fine level neighbors are determined in
 ! MODULE Boundary:
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-TYPE(nodeinfo), POINTER:: parent
-INTEGER:: ierror
-INTEGER, DIMENSION(1:maxdims):: cmx
-INTEGER, DIMENSION(1:maxdims,1:2):: mboc, mbounds
+      TYPE(nodeinfo), POINTER:: parent
+      INTEGER:: ierror
+      INTEGER, DIMENSION(1:maxdims):: cmx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mboc, mbounds
 !
-cmx = 1
-cmx(1:ndims) = info%mx(1:ndims)/2
-mbounds = 1
-mbounds(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
-mboc = 1
-mboc(1:ndims,1) = (mbounds(1:ndims,1)+1)/2
-mboc(1:ndims,2) =  mbounds(1:ndims,2)   /2
+      cmx = 1
+      cmx(1:ndims) = info%mx(1:ndims)/2
+      mbounds = 1
+      mbounds(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
+      mboc = 1
+      mboc(1:ndims,1) = (mbounds(1:ndims,1)+1)/2
+      mboc(1:ndims,2) =  mbounds(1:ndims,2)   /2
 !
-FindCoarseLevelNeighbors = err_ok
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      FindCoarseLevelNeighbors = err_ok
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-ierror = GetParentInfo(parent)
+      ierror = GetParentInfo(parent)
 !
-SELECT CASE(ndims)
-  CASE(2)
-!
-! Right (x = cmx+1):
-        info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,1) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,1)
-        info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,1) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,1)
-!
-! Left  (x = 0):
-        info%levellandscape(          0,          1: cmx(2)+1:2,1) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,1)
-        info%levellandscape(          0,          0: cmx(2)  :2,1) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,1)
-!
-! Top   (y = cmx+1):
-        info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,1) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,1)
-        info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,1) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,1)
-!
-! Bottom(y = 0):
-        info%levellandscape(          1: cmx(1)+1:2,          0,1) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,1)
-        info%levellandscape(          0: cmx(1)  :2,          0,1) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,1)
-!
-  CASE(3)
+      SELECT CASE(ndims)
+       CASE(2)
 !
 ! Right (x = cmx+1):
-        info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
-        info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,1) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,1)
+         info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,1) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,1)
 !
 ! Left  (x = 0):
-        info%levellandscape(          0,          1: cmx(2)+1:2,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)    
-        info%levellandscape(          0,          0: cmx(2)  :2,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)  :mboc(3,2)+1)    
-        info%levellandscape(          0,          1: cmx(2)+1:2,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )    
-        info%levellandscape(          0,          0: cmx(2)  :2,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          0,          1: cmx(2)+1:2,1) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,1)
+         info%levellandscape(          0,          0: cmx(2)  :2,1) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,1)
 !
 ! Top   (y = cmx+1):
-        info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
-        info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,1) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,1)
+         info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,1) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,1)
 !
 ! Bottom(y = 0):
-        info%levellandscape(          1: cmx(1)+1:2,          0,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape(          0: cmx(1)  :2,          0,          1: cmx(3)+1:2) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,mboc(3,1)  :mboc(3,2)+1)
-        info%levellandscape(          1: cmx(1)+1:2,          0,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,mboc(3,1)-1:mboc(3,2)  )
-        info%levellandscape(          0: cmx(1)  :2,          0,          0: cmx(3)  :2) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          1: cmx(1)+1:2,          0,1) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,1)
+         info%levellandscape(          0: cmx(1)  :2,          0,1) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,1)
+!
+       CASE(3)
+!
+! Right (x = cmx+1):
+         info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape( cmx(1)  +1,          1: cmx(2)+1:2,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape( cmx(1)  +1,          0: cmx(2)  :2,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1:mboc(3,2)  )
+!
+! Left  (x = 0):
+         info%levellandscape(          0,          1: cmx(2)+1:2,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          0,          0: cmx(2)  :2,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          0,          1: cmx(2)+1:2,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          0,          0: cmx(2)  :2,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)-1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1:mboc(3,2)  )
+!
+! Top   (y = cmx+1):
+         info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          1: cmx(1)+1:2, cmx(2)  +1,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          0: cmx(1)  :2, cmx(2)  +1,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,2)+1,mboc(3,1)-1:mboc(3,2)  )
+!
+! Bottom(y = 0):
+         info%levellandscape(          1: cmx(1)+1:2,          0,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          0: cmx(1)  :2,          0,          1: cmx(3)+1:2) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,mboc(3,1)  :mboc(3,2)+1)
+         info%levellandscape(          1: cmx(1)+1:2,          0,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1,mboc(3,1)-1:mboc(3,2)  )
+         info%levellandscape(          0: cmx(1)  :2,          0,          0: cmx(3)  :2) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1,mboc(3,1)-1:mboc(3,2)  )
 !
 ! Front (z = 0):
-        info%levellandscape(          1: cmx(1)+1:2,          1: cmx(2)+1:2,          0) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1)
-        info%levellandscape(          0: cmx(1)  :2,          1: cmx(2)+1:2,          0) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1)
-        info%levellandscape(          1: cmx(1)+1:2,          0: cmx(2)  :2,          0) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1)
-        info%levellandscape(          0: cmx(1)  :2,          0: cmx(2)  :2,          0) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1)
+         info%levellandscape(          1: cmx(1)+1:2,          1: cmx(2)+1:2,          0) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1)
+         info%levellandscape(          0: cmx(1)  :2,          1: cmx(2)+1:2,          0) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)  :mboc(2,2)+1,mboc(3,1)-1)
+         info%levellandscape(          1: cmx(1)+1:2,          0: cmx(2)  :2,          0) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1)
+         info%levellandscape(          0: cmx(1)  :2,          0: cmx(2)  :2,          0) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1:mboc(2,2)  ,mboc(3,1)-1)
 !
 ! Back  (z = cmx+1):
-        info%levellandscape(          1: cmx(1)+1:2,          1: cmx(2)+1:2, cmx(3)  +1) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,2)+1)
-        info%levellandscape(          0: cmx(1)  :2,          1: cmx(2)+1:2, cmx(3)  +1) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)  :mboc(2,2)+1,mboc(3,2)+1)
-        info%levellandscape(          1: cmx(1)+1:2,          0: cmx(2)  :2, cmx(3)  +1) &
-    = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,2)+1)
-        info%levellandscape(          0: cmx(1)  :2,          0: cmx(2)  :2, cmx(3)  +1) &
-    = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1:mboc(2,2)  ,mboc(3,2)+1)
+         info%levellandscape(          1: cmx(1)+1:2,          1: cmx(2)+1:2, cmx(3)  +1) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)  :mboc(2,2)+1,mboc(3,2)+1)
+         info%levellandscape(          0: cmx(1)  :2,          1: cmx(2)+1:2, cmx(3)  +1) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)  :mboc(2,2)+1,mboc(3,2)+1)
+         info%levellandscape(          1: cmx(1)+1:2,          0: cmx(2)  :2, cmx(3)  +1) &
+            = parent%levellandscape(mboc(1,1)  :mboc(1,2)+1,mboc(2,1)-1:mboc(2,2)  ,mboc(3,2)+1)
+         info%levellandscape(          0: cmx(1)  :2,          0: cmx(2)  :2, cmx(3)  +1) &
+            = parent%levellandscape(mboc(1,1)-1:mboc(1,2)  ,mboc(2,1)-1:mboc(2,2)  ,mboc(3,2)+1)
 !
-  CASE DEFAULT
-    PRINT *, 'BSAM 2.0, FindCoarseLevelNeighbors: only supports ndims=2,3.'
-END SELECT
+       CASE DEFAULT
+         PRINT *, 'BSAM 2.0, FindCoarseLevelNeighbors: only supports ndims=2,3.'
+      END SELECT
 !
-END FUNCTION FindCoarseLevelNeighbors
+   END FUNCTION FindCoarseLevelNeighbors
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE FindMeshDefects(level)
-USE NodeInfoDef
-USE Boundary, ONLY: GetPeriodicOffsets
-USE TreeOps, ONLY: ApplyOnLevel
-IMPLICIT NONE
+   SUBROUTINE FindMeshDefects(level)
+      USE NodeInfoDef
+      USE Boundary, ONLY: GetPeriodicOffsets
+      USE TreeOps, ONLY: ApplyOnLevel
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: level
 !
-TYPE(funcparam):: dummy
-LOGICAL:: periodicbuffer
-INTEGER:: offset, polarity
-INTEGER, DIMENSION(1:maxdims):: coordinatesave
+      TYPE(funcparam):: dummy
+      LOGICAL:: periodicbuffer
+      INTEGER:: offset, polarity
+      INTEGER, DIMENSION(1:maxdims):: coordinatesave
 !
-ALLOCATE(zerothtaggedcell)
-NULLIFY(zerothtaggedcell%prevcell)
-lasttaggedcell => zerothtaggedcell
-ntaggedcells = 0
+      ALLOCATE(zerothtaggedcell)
+      NULLIFY(zerothtaggedcell%prevcell)
+      lasttaggedcell => zerothtaggedcell
+      ntaggedcells = 0
 !
 ! Get a list of defects. Tagged cells, if any will be located on level-2:
-CALL ApplyOnLevel(level,FindAndListPatchDefects,dummy)
+      CALL ApplyOnLevel(level,FindAndListPatchDefects,dummy)
 !
-IF(ntaggedcells > 0) THEN
-  coordinatesave = 1
-  currenttaggedcell => lasttaggedcell
-  searchloop: DO
-    IF(.NOT. ASSOCIATED(currenttaggedcell%prevcell)) EXIT searchloop
+      IF(ntaggedcells > 0) THEN
+         coordinatesave = 1
+         currenttaggedcell => lasttaggedcell
+         searchloop: DO
+            IF(.NOT. ASSOCIATED(currenttaggedcell%prevcell)) EXIT searchloop
 !
 ! Ordinary buffering of an edge tag:
-  dummy%iswitch = 1 ! Buffer by one cell only:
-  CALL ApplyOnLevel(level-2,BufferTaggedCells,dummy)
+            dummy%iswitch = 1 ! Buffer by one cell only:
+            CALL ApplyOnLevel(level-2,BufferTaggedCells,dummy)
 !
-! Buffering of periodic edge tags. Check to see if the buffer area cuts across 
+! Buffering of periodic edge tags. Check to see if the buffer area cuts across
 ! a periodic boundary.  If so, add offset and apply buffer:
-    coordinatesave(1:ndims) = currenttaggedcell%coordinate(1:ndims)
-    IF(periodicboundaryconditions) THEN
-      CALL GetPeriodicOffsets(level-2) ! Tags are on level-2:
-      DO polarity = -1, 1, 2
-        DO offset = 1, nperiodicoffsets
-          currenttaggedcell%coordinate(1:ndims) &
-            = coordinatesave(1:ndims)+polarity*poffset(1:ndims,offset)
-          dummy%iswitch = 1 ! Buffer by one cell only:
-          CALL ApplyOnLevel(level-2,BufferTaggedCells,dummy)
-        END DO
-      END DO
-    END IF
-    currenttaggedcell%coordinate(1:ndims) = coordinatesave(1:ndims)
+            coordinatesave(1:ndims) = currenttaggedcell%coordinate(1:ndims)
+            IF(periodicboundaryconditions) THEN
+               CALL GetPeriodicOffsets(level-2) ! Tags are on level-2:
+               DO polarity = -1, 1, 2
+                  DO offset = 1, nperiodicoffsets
+                     currenttaggedcell%coordinate(1:ndims) &
+                        = coordinatesave(1:ndims)+polarity*poffset(1:ndims,offset)
+                     dummy%iswitch = 1 ! Buffer by one cell only:
+                     CALL ApplyOnLevel(level-2,BufferTaggedCells,dummy)
+                  END DO
+               END DO
+            END IF
+            currenttaggedcell%coordinate(1:ndims) = coordinatesave(1:ndims)
 !
-    currenttaggedcell => currenttaggedcell%prevcell
-  END DO searchloop
+            currenttaggedcell => currenttaggedcell%prevcell
+         END DO searchloop
 !
-  CALL DeleteTaggedCellsList
-END IF
+         CALL DeleteTaggedCellsList
+      END IF
 !
-NULLIFY(lasttaggedcell)
-NULLIFY(currenttaggedcell)
-DEALLOCATE(zerothtaggedcell)
+      NULLIFY(lasttaggedcell)
+      NULLIFY(currenttaggedcell)
+      DEALLOCATE(zerothtaggedcell)
 !
-END SUBROUTINE FindMeshDefects
+   END SUBROUTINE FindMeshDefects
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION FindAndListPatchDefects(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION FindAndListPatchDefects(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
 ! This routine finds mesh defects and tags for re-refinement if necessary:
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER:: i, ii, j, jj, k, kk, mylevel
-INTEGER, DIMENSION(1:maxdims):: cmx, ind
-INTEGER, DIMENSION(1:maxdims,1:2):: mg
+      INTEGER:: i, ii, j, jj, k, kk, mylevel
+      INTEGER, DIMENSION(1:maxdims):: cmx, ind
+      INTEGER, DIMENSION(1:maxdims,1:2):: mg
 !
-FindAndListPatchDefects = err_ok
+      FindAndListPatchDefects = err_ok
 !
 ! Check for inactive grid awaiting garbage collection
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-cmx = 1
-cmx(1:ndims) = info%mx(1:ndims)/2
+      cmx = 1
+      cmx(1:ndims) = info%mx(1:ndims)/2
 !
-mg = 1
-mg(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
+      mg = 1
+      mg(1:ndims,1:2) = info%mglobal(1:ndims,1:2)
 !
-mylevel = info%level
+      mylevel = info%level
 !
-ind = 1
+      ind = 1
 !
-SELECT CASE(ndims)
-CASE(2)
+      SELECT CASE(ndims)
+       CASE(2)
 !
 ! Faces:
 ! Right and Left:
-  DO j = 1, cmx(2)
-    DO i = 1, 2
-      ii = cmx(1)+1-(2-i)*(cmx(1)+1) ! 0 and cmx(1)+1
-      IF(info%levellandscape(ii,j,1) == mylevel-2) THEN
-        defectivegridlevel(mylevel) = .TRUE.
-        info%defective = .TRUE.
-        ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,1)
-        CALL AddTaggedCellToList(ind(1:maxdims))
-      END IF
-    END DO 
-  END DO
+         DO j = 1, cmx(2)
+            DO i = 1, 2
+               ii = cmx(1)+1-(2-i)*(cmx(1)+1) ! 0 and cmx(1)+1
+               IF(info%levellandscape(ii,j,1) == mylevel-2) THEN
+                  defectivegridlevel(mylevel) = .TRUE.
+                  info%defective = .TRUE.
+                  ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,1)
+                  CALL AddTaggedCellToList(ind(1:maxdims))
+               END IF
+            END DO
+         END DO
 !
 ! Top and Bottom:
-  DO i = 1, cmx(1)
-    DO j = 1, 2
-      jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-      IF(info%levellandscape(i,jj,1) == mylevel-2) THEN
-        defectivegridlevel(mylevel) = .TRUE.
-        info%defective = .TRUE.
-        ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),1)
-        CALL AddTaggedCellToList(ind(1:maxdims))
-      END IF
-    END DO
-  END DO
+         DO i = 1, cmx(1)
+            DO j = 1, 2
+               jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+               IF(info%levellandscape(i,jj,1) == mylevel-2) THEN
+                  defectivegridlevel(mylevel) = .TRUE.
+                  info%defective = .TRUE.
+                  ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),1)
+                  CALL AddTaggedCellToList(ind(1:maxdims))
+               END IF
+            END DO
+         END DO
 !
 ! Four corners points:
-  DO i = 1, 2
-    DO j = 1, 2
-      ii = cmx(1)+1-(2-i)*(cmx(1)+1)
-      jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-      IF(info%levellandscape(ii,jj,1) == mylevel-2) THEN
-        defectivegridlevel(mylevel) = .TRUE.
-        info%defective = .TRUE.
-        ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),1)
-        CALL AddTaggedCellToList(ind(1:maxdims))
-      END IF
-    END DO
-  END DO
+         DO i = 1, 2
+            DO j = 1, 2
+               ii = cmx(1)+1-(2-i)*(cmx(1)+1)
+               jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+               IF(info%levellandscape(ii,jj,1) == mylevel-2) THEN
+                  defectivegridlevel(mylevel) = .TRUE.
+                  info%defective = .TRUE.
+                  ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),1)
+                  CALL AddTaggedCellToList(ind(1:maxdims))
+               END IF
+            END DO
+         END DO
 !
-CASE(3)
+       CASE(3)
 !
 ! Faces:
 ! Right and Left
-  DO j = 1, cmx(2)
-    DO k = 1, cmx(3)
-      DO i = 1, 2
-        ii = cmx(1)+1-(2-i)*(cmx(1)+1) ! 0 and cmx(1)+1
-        IF(info%levellandscape(ii,j,k) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,mg(3,1)+2*k-1)
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO 
-    END DO
-  END DO
+         DO j = 1, cmx(2)
+            DO k = 1, cmx(3)
+               DO i = 1, 2
+                  ii = cmx(1)+1-(2-i)*(cmx(1)+1) ! 0 and cmx(1)+1
+                  IF(info%levellandscape(ii,j,k) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,mg(3,1)+2*k-1)
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! Top and Bottom
-  DO i = 1, cmx(1)
-    DO k = 1, cmx(3)
-      DO j = 1, 2
-        jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-        IF(info%levellandscape(i,jj,k) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),mg(3,1)+2*k-1)
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO i = 1, cmx(1)
+            DO k = 1, cmx(3)
+               DO j = 1, 2
+                  jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+                  IF(info%levellandscape(i,jj,k) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),mg(3,1)+2*k-1)
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! Front and Back
-  DO i = 1, cmx(1)
-    DO j = 1, cmx(2)
-      DO k = 1, 2
-        kk = cmx(3)+1-(2-k)*(cmx(3)+1)
-        IF(info%levellandscape(i,j,kk) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,1)+2*j-1,mg(3,k))
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO i = 1, cmx(1)
+            DO j = 1, cmx(2)
+               DO k = 1, 2
+                  kk = cmx(3)+1-(2-k)*(cmx(3)+1)
+                  IF(info%levellandscape(i,j,kk) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,1)+2*j-1,mg(3,k))
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! Twelve edges
 ! x and y fixed
 !
-  DO k = 1, cmx(3)
-    DO i = 1, 2
-      DO j = 1, 2
-        ii = cmx(1)+1-(2-i)*(cmx(1)+1)
-        jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-        IF(info%levellandscape(ii,jj,k) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),mg(3,1)+2*k-1)
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO k = 1, cmx(3)
+            DO i = 1, 2
+               DO j = 1, 2
+                  ii = cmx(1)+1-(2-i)*(cmx(1)+1)
+                  jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+                  IF(info%levellandscape(ii,jj,k) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),mg(3,1)+2*k-1)
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! x and z fixed
 !
-  DO j = 1, cmx(2)
-    DO i = 1, 2
-      DO k = 1, 2
-        ii = cmx(1)+1-(2-i)*(cmx(1)+1)
-        kk = cmx(3)+1-(2-k)*(cmx(3)+1)
-        IF(info%levellandscape(ii,j,kk) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,mg(3,k))
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO j = 1, cmx(2)
+            DO i = 1, 2
+               DO k = 1, 2
+                  ii = cmx(1)+1-(2-i)*(cmx(1)+1)
+                  kk = cmx(3)+1-(2-k)*(cmx(3)+1)
+                  IF(info%levellandscape(ii,j,kk) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,1)+2*j-1,mg(3,k))
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! y and z fixed
 !
-  DO i = 1, cmx(1)
-    DO j = 1, 2
-      DO k = 1, 2
-        jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-        kk = cmx(3)+1-(2-k)*(cmx(3)+1)
-        IF(info%levellandscape(i,jj,kk) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),mg(3,k))
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO i = 1, cmx(1)
+            DO j = 1, 2
+               DO k = 1, 2
+                  jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+                  kk = cmx(3)+1-(2-k)*(cmx(3)+1)
+                  IF(info%levellandscape(i,jj,kk) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,1)+2*i-1,mg(2,j),mg(3,k))
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 ! Eight corners points:
 !
-  DO i = 1, 2
-    DO j = 1, 2
-      DO k = 1, 2
-        ii = cmx(1)+1-(2-i)*(cmx(1)+1)
-        jj = cmx(2)+1-(2-j)*(cmx(2)+1)
-        kk = cmx(3)+1-(2-k)*(cmx(3)+1)
-        IF(info%levellandscape(ii,jj,kk) == mylevel-2) THEN
-          defectivegridlevel(mylevel) = .TRUE.
-          info%defective = .TRUE.
-          ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),mg(3,k))
-          CALL AddTaggedCellToList(ind(1:maxdims))
-        END IF
-      END DO
-    END DO
-  END DO
+         DO i = 1, 2
+            DO j = 1, 2
+               DO k = 1, 2
+                  ii = cmx(1)+1-(2-i)*(cmx(1)+1)
+                  jj = cmx(2)+1-(2-j)*(cmx(2)+1)
+                  kk = cmx(3)+1-(2-k)*(cmx(3)+1)
+                  IF(info%levellandscape(ii,jj,kk) == mylevel-2) THEN
+                     defectivegridlevel(mylevel) = .TRUE.
+                     info%defective = .TRUE.
+                     ind(1:maxdims) = CoarseCoarseGlobalIndex(mg(1,i),mg(2,j),mg(3,k))
+                     CALL AddTaggedCellToList(ind(1:maxdims))
+                  END IF
+               END DO
+            END DO
+         END DO
 !
 !
-END SELECT
+      END SELECT
 !
-END FUNCTION FindAndListPatchDefects
+   END FUNCTION FindAndListPatchDefects
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-FUNCTION CoarseCoarseGlobalIndex(i,j,k) RESULT(indexres)
-USE NodeInfoDef
-IMPLICIT NONE
+   FUNCTION CoarseCoarseGlobalIndex(i,j,k) RESULT(indexres)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
 ! Given global indices of point p=(i,j,k), find the global indices of a cell
 ! two levels below (coarse-coarse grid) that contains p:
 !
-INTEGER:: i, j,k 
-INTEGER, DIMENSION(1:maxdims):: indexres
+      INTEGER:: i, j,k
+      INTEGER, DIMENSION(1:maxdims):: indexres
 !
-indexres = 1
+      indexres = 1
 !
-indexres(1) = (i+MODULO(i,2))/2
-indexres(2) = (j+MODULO(j,2))/2
-indexres(3) = (k+MODULO(k,2))/2
+      indexres(1) = (i+MODULO(i,2))/2
+      indexres(2) = (j+MODULO(j,2))/2
+      indexres(3) = (k+MODULO(k,2))/2
 !
-indexres(1:ndims) = (indexres(1:ndims)+MODULO(indexres(1:ndims),2))/2
+      indexres(1:ndims) = (indexres(1:ndims)+MODULO(indexres(1:ndims),2))/2
 !
-END FUNCTION CoarseCoarseGlobalIndex
+   END FUNCTION CoarseCoarseGlobalIndex
 !
 END MODULE BSAMRoutines

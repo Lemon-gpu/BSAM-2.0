@@ -53,1804 +53,1804 @@
 ! Revision History: Ver. 2.0 Jul. 2015 Steven Wise
 ! -----------------------------------------------------------------------
 MODULE Boundary
-USE NodeInfoDef, ONLY: r8
-IMPLICIT NONE
+   USE NodeInfoDef, ONLY: r8
+   IMPLICIT NONE
 !
-REAL(KIND=r8), PARAMETER:: a1 = -01.0_r8/05.0_r8
-REAL(KIND=r8), PARAMETER:: a2 =  02.0_r8/03.0_r8
-REAL(KIND=r8), PARAMETER:: a3 =  08.0_r8/15.0_r8
-REAL(KIND=r8), PARAMETER:: b1 =  05.0_r8/32.0_r8
-REAL(KIND=r8), PARAMETER:: b2 =  15.0_r8/16.0_r8
-REAL(KIND=r8), PARAMETER:: b3 = -03.0_r8/32.0_r8
-REAL(KIND=r8), PARAMETER:: t1 = -01.0_r8/03.0_r8
-REAL(KIND=r8), PARAMETER:: t2 =  01.0_r8/01.0_r8
-REAL(KIND=r8), PARAMETER:: t3 =  01.0_r8/03.0_r8
-REAL(KIND=r8), PARAMETER:: c1 =  09.0_r8/16.0_r8
-REAL(KIND=r8), PARAMETER:: c2 =  03.0_r8/16.0_r8
-REAL(KIND=r8), PARAMETER:: c3 =  03.0_r8/16.0_r8
-REAL(KIND=r8), PARAMETER:: c4 =  01.0_r8/16.0_r8
+   REAL(KIND=r8), PARAMETER:: a1 = -01.0_r8/05.0_r8
+   REAL(KIND=r8), PARAMETER:: a2 =  02.0_r8/03.0_r8
+   REAL(KIND=r8), PARAMETER:: a3 =  08.0_r8/15.0_r8
+   REAL(KIND=r8), PARAMETER:: b1 =  05.0_r8/32.0_r8
+   REAL(KIND=r8), PARAMETER:: b2 =  15.0_r8/16.0_r8
+   REAL(KIND=r8), PARAMETER:: b3 = -03.0_r8/32.0_r8
+   REAL(KIND=r8), PARAMETER:: t1 = -01.0_r8/03.0_r8
+   REAL(KIND=r8), PARAMETER:: t2 =  01.0_r8/01.0_r8
+   REAL(KIND=r8), PARAMETER:: t3 =  01.0_r8/03.0_r8
+   REAL(KIND=r8), PARAMETER:: c1 =  09.0_r8/16.0_r8
+   REAL(KIND=r8), PARAMETER:: c2 =  03.0_r8/16.0_r8
+   REAL(KIND=r8), PARAMETER:: c3 =  03.0_r8/16.0_r8
+   REAL(KIND=r8), PARAMETER:: c4 =  01.0_r8/16.0_r8
 !
 CONTAINS
 !
-SUBROUTINE SetGhost(level,ipass)
-USE NodeInfoDef
-USE TreeOps, ONLY: ApplyOnLevel, ApplyOnLevelPairs
-IMPLICIT NONE
+   SUBROUTINE SetGhost(level,ipass)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: ApplyOnLevel, ApplyOnLevelPairs
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
-INTEGER, INTENT(IN):: ipass
+      INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: ipass
 !
-TYPE(funcparam):: dummy
+      TYPE(funcparam):: dummy
 !
-dummy%iswitch = ipass
+      dummy%iswitch = ipass
 !
 ! 0. Interpolate between coarse and fine grids:
-IF(level>rootlevel) CALL ApplyOnLevel(level,InterpolateCoarseFine,dummy)
+      IF(level>rootlevel) CALL ApplyOnLevel(level,InterpolateCoarseFine,dummy)
 !
 ! 1. Transfer boundary conditions among grids on same level:
-IF(level>rootlevel) CALL ApplyOnLevelPairs(level,TransferBC,dummy)
+      IF(level>rootlevel) CALL ApplyOnLevelPairs(level,TransferBC,dummy)
 !
-IF(periodicboundaryconditions) THEN
+      IF(periodicboundaryconditions) THEN
 !
 ! 2. Apply periodic boundary conditions on same grid:
-  CALL ApplyOnLevel(level,SelfPeriodicBC,dummy)
+         CALL ApplyOnLevel(level,SelfPeriodicBC,dummy)
 !
 ! 3. Apply periodic boundary conditions on different grids:
-  IF(level>rootlevel) CALL ApplyOnLevelPairs(level,TransferPeriodicBC,dummy)
-END IF
+         IF(level>rootlevel) CALL ApplyOnLevelPairs(level,TransferPeriodicBC,dummy)
+      END IF
 !
 ! 4. Apply physical boundary conditions:
-CALL ApplyOnLevel(level,SetPhysicalBC,dummy)
+      CALL ApplyOnLevel(level,SetPhysicalBC,dummy)
 !
-END SUBROUTINE SetGhost
+   END SUBROUTINE SetGhost
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION InterpolateCoarseFine(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok, GetParentInfo
-IMPLICIT NONE
+   INTEGER FUNCTION InterpolateCoarseFine(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok, GetParentInfo
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-TYPE(nodeinfo), POINTER:: parent
-INTEGER:: ierror, ipass
-INTEGER, DIMENSION(1:maxdims):: mx, pmx
-INTEGER, DIMENSION(1:2*maxdims):: mthbc
-INTEGER, DIMENSION(1:maxdims,1:2):: mb
+      TYPE(nodeinfo), POINTER:: parent
+      INTEGER:: ierror, ipass
+      INTEGER, DIMENSION(1:maxdims):: mx, pmx
+      INTEGER, DIMENSION(1:2*maxdims):: mthbc
+      INTEGER, DIMENSION(1:maxdims,1:2):: mb
 !
-InterpolateCoarseFine = err_ok
+      InterpolateCoarseFine = err_ok
 !
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-ipass = dummy%iswitch
-ierror = GetParentInfo(parent)
-mx = 1; mx(1:ndims) = info%mx(1:ndims)
-pmx = 1; pmx(1:ndims) = parent%mx(1:ndims)
-mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
-mthbc = 1; mthbc(1:2*ndims) = info%mthbc(1:2*ndims)
+      ipass = dummy%iswitch
+      ierror = GetParentInfo(parent)
+      mx = 1; mx(1:ndims) = info%mx(1:ndims)
+      pmx = 1; pmx(1:ndims) = parent%mx(1:ndims)
+      mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
+      mthbc = 1; mthbc(1:2*ndims) = info%mthbc(1:2*ndims)
 !
-SELECT CASE(ndims)
-  CASE(2)
-    CALL Interpolate2D(  info%q(0: mx(1)+1,0: mx(2)+1,1,1:nccv), &
-                       parent%q(0:pmx(1)+1,0:pmx(2)+1,1,1:nccv), &
-                       mx(1:2),mb(1:2,1:2),mthbc(1:4),ipass)
+      SELECT CASE(ndims)
+       CASE(2)
+         CALL Interpolate2D(  info%q(0: mx(1)+1,0: mx(2)+1,1,1:nccv), &
+            parent%q(0:pmx(1)+1,0:pmx(2)+1,1,1:nccv), &
+            mx(1:2),mb(1:2,1:2),mthbc(1:4),ipass)
 !    CALL Interpolate2DEdgeVars(  info%v1(-1: mx(1)+1,0: mx(2)+1,1,1:nfcv), &
 !                               parent%v1(-1:pmx(1)+1,0:pmx(2)+1,1,1:nfcv), &
 !                               mx(1:2),mb(1:2,1:2),mthbc(1:4),ipass)
-  CASE(3)
-    CALL Interpolate3D(  info%q(0: mx(1)+1,0: mx(2)+1,0: mx(3)+1,1:nccv), &
-                       parent%q(0:pmx(1)+1,0:pmx(2)+1,0:pmx(3)+1,1:nccv), &
-                       mx(1:3),mb(1:3,1:2),mthbc(1:6),ipass)
-  CASE DEFAULT
-    PRINT *, 'BSAM 2.0, InterpolateCoarseFine: only n=2,3 supported.'
-    STOP
-END SELECT
+       CASE(3)
+         CALL Interpolate3D(  info%q(0: mx(1)+1,0: mx(2)+1,0: mx(3)+1,1:nccv), &
+            parent%q(0:pmx(1)+1,0:pmx(2)+1,0:pmx(3)+1,1:nccv), &
+            mx(1:3),mb(1:3,1:2),mthbc(1:6),ipass)
+       CASE DEFAULT
+         PRINT *, 'BSAM 2.0, InterpolateCoarseFine: only n=2,3 supported.'
+         STOP
+      END SELECT
 !
-END FUNCTION InterpolateCoarseFine
+   END FUNCTION InterpolateCoarseFine
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE Interpolate2D(qf,qc,mx,mb,mthbc,ipass)
-USE NodeInfoDef, ONLY: r8, nccv
-IMPLICIT NONE
+   SUBROUTINE Interpolate2D(qf,qc,mx,mb,mthbc,ipass)
+      USE NodeInfoDef, ONLY: r8, nccv
+      IMPLICIT NONE
 !
-REAL(KIND=r8), DIMENSION(0:,0:,1:), INTENT(IN OUT):: qf
-REAL(KIND=r8), DIMENSION(0:,0:,1:), INTENT(IN):: qc
-INTEGER, DIMENSION(1:2), INTENT(IN):: mx
-INTEGER, DIMENSION(1:2,1:2), INTENT(IN):: mb
-INTEGER, DIMENSION(1:4), INTENT(IN):: mthbc
-INTEGER, INTENT(IN):: ipass
+      REAL(KIND=r8), DIMENSION(0:,0:,1:), INTENT(IN OUT):: qf
+      REAL(KIND=r8), DIMENSION(0:,0:,1:), INTENT(IN):: qc
+      INTEGER, DIMENSION(1:2), INTENT(IN):: mx
+      INTEGER, DIMENSION(1:2,1:2), INTENT(IN):: mb
+      INTEGER, DIMENSION(1:4), INTENT(IN):: mthbc
+      INTEGER, INTENT(IN):: ipass
 !
 ! Corners:
 !
 ! Red corners:
-IF(ipass==1 .OR. ipass==0) THEN
+      IF(ipass==1 .OR. ipass==0) THEN
 !a_{i+1,j+1}=-3/15*a_{i-1,j-1}+10/15*a_{i,j}+8/15*ac_{i+1,j+1}
-  qf(mx(1)+1,mx(2)+1,1:nccv) &
-    = a1*qf(mx(1)-1,mx(2)-1,1:nccv) &
-    + a2*qf(mx(1)  ,mx(2)  ,1:nccv) &
-    + a3*qc(mb(1,2)+1,mb(2,2)+1,1:nccv)
+         qf(mx(1)+1,mx(2)+1,1:nccv) &
+            = a1*qf(mx(1)-1,mx(2)-1,1:nccv) &
+            + a2*qf(mx(1)  ,mx(2)  ,1:nccv) &
+            + a3*qc(mb(1,2)+1,mb(2,2)+1,1:nccv)
 !
-  qf(0,0,1:nccv) &
-    = a1*qf(2,2,1:nccv) &
-    + a2*qf(1,1,1:nccv) &
-    + a3*qc(mb(1,1)-1,mb(2,1)-1,1:nccv)
-END IF
+         qf(0,0,1:nccv) &
+            = a1*qf(2,2,1:nccv) &
+            + a2*qf(1,1,1:nccv) &
+            + a3*qc(mb(1,1)-1,mb(2,1)-1,1:nccv)
+      END IF
 !
 ! Black corners:
-IF(ipass==2 .OR. ipass==0) THEN
-  qf(mx(1)+1,0,1:nccv) &
-    = a1*qf(mx(1)-1,2,1:nccv) &
-    + a2*qf(mx(1)  ,1,1:nccv) &
-    + a3*qc(mb(1,2)+1,mb(2,1)-1,1:nccv)
+      IF(ipass==2 .OR. ipass==0) THEN
+         qf(mx(1)+1,0,1:nccv) &
+            = a1*qf(mx(1)-1,2,1:nccv) &
+            + a2*qf(mx(1)  ,1,1:nccv) &
+            + a3*qc(mb(1,2)+1,mb(2,1)-1,1:nccv)
 !
-  qf(0,mx(2)+1,1:nccv) &
-    = a1*qf(2,mx(2)-1,1:nccv) &
-    + a2*qf(1,mx(2)  ,1:nccv) &
-    + a3*qc(mb(1,1)-1,mb(2,2)+1,1:nccv)
-END IF
+         qf(0,mx(2)+1,1:nccv) &
+            = a1*qf(2,mx(2)-1,1:nccv) &
+            + a2*qf(1,mx(2)  ,1:nccv) &
+            + a3*qc(mb(1,1)-1,mb(2,2)+1,1:nccv)
+      END IF
 !
 ! Faces:
 !
-SELECT CASE(mthbc(1))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(1))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #1, Red:
-  IF(ipass==1 .OR. ipass==0) THEN
-    qf(0,2:mx(2)-2:2,1:nccv) &
-      = a1*qf(2,4:mx(2)  :2,1:nccv) &
-      + a2*qf(1,3:mx(2)-1:2,1:nccv) &
-      + a3*qc(mb(1,1)-1,mb(2,1):mb(2,2)-1,1:nccv)
+         IF(ipass==1 .OR. ipass==0) THEN
+            qf(0,2:mx(2)-2:2,1:nccv) &
+               = a1*qf(2,4:mx(2)  :2,1:nccv) &
+               + a2*qf(1,3:mx(2)-1:2,1:nccv) &
+               + a3*qc(mb(1,1)-1,mb(2,1):mb(2,2)-1,1:nccv)
 !
-    qf(0,mx(2),1:nccv) &
-      = a1*qf(2,mx(2),1:nccv) &
-      + a2*qf(1,mx(2),1:nccv) &
-      + a3*(b1*qc(mb(1,1)-1,mb(2,2)+1,1:nccv) &
-      +     b2*qc(mb(1,1)-1,mb(2,2)  ,1:nccv) &
-      +     b3*qc(mb(1,1)-1,mb(2,2)-1,1:nccv))
-  END IF
+            qf(0,mx(2),1:nccv) &
+               = a1*qf(2,mx(2),1:nccv) &
+               + a2*qf(1,mx(2),1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,2)+1,1:nccv) &
+               +     b2*qc(mb(1,1)-1,mb(2,2)  ,1:nccv) &
+               +     b3*qc(mb(1,1)-1,mb(2,2)-1,1:nccv))
+         END IF
 !
 ! Face #1, Black:
-  IF(ipass==2 .OR. ipass==0) THEN
-    qf(0,3:mx(2)-1:2,1:nccv) &
-      = a1*qf(2,1:mx(2)-3:2,1:nccv) &
-      + a2*qf(1,2:mx(2)-2:2,1:nccv) &
-      + a3*qc(mb(1,1)-1,mb(2,1)+1:mb(2,2),1:nccv)
+         IF(ipass==2 .OR. ipass==0) THEN
+            qf(0,3:mx(2)-1:2,1:nccv) &
+               = a1*qf(2,1:mx(2)-3:2,1:nccv) &
+               + a2*qf(1,2:mx(2)-2:2,1:nccv) &
+               + a3*qc(mb(1,1)-1,mb(2,1)+1:mb(2,2),1:nccv)
 !
-    qf(0,1,1:nccv) &
-      =          a1*qf(2,1,1:nccv) &
-      + a2*qf(1,1,1:nccv) &
-      + a3*(b1*qc(mb(1,1)-1,mb(2,1)-1,1:nccv) &
-      +     b2*qc(mb(1,1)-1,mb(2,1)  ,1:nccv) &
-      +     b3*qc(mb(1,1)-1,mb(2,1)+1,1:nccv))
-  END IF
+            qf(0,1,1:nccv) &
+               =          a1*qf(2,1,1:nccv) &
+               + a2*qf(1,1,1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,1)-1,1:nccv) &
+               +     b2*qc(mb(1,1)-1,mb(2,1)  ,1:nccv) &
+               +     b3*qc(mb(1,1)-1,mb(2,1)+1,1:nccv))
+         END IF
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-SELECT CASE(mthbc(2))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(2))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #2, Red:
-  IF(ipass==1 .OR. ipass==0) THEN
-    qf(mx(1)+1,3:mx(2)-1:2,1:nccv) &
-      = a1*qf(mx(1)-1,1:mx(2)-3:2,1:nccv) &
-      + a2*qf(mx(1)  ,2:mx(2)-2:2,1:nccv) &
-      + a3*qc(mb(1,2)+1,mb(2,1)+1:mb(2,2):1,1:nccv)
+         IF(ipass==1 .OR. ipass==0) THEN
+            qf(mx(1)+1,3:mx(2)-1:2,1:nccv) &
+               = a1*qf(mx(1)-1,1:mx(2)-3:2,1:nccv) &
+               + a2*qf(mx(1)  ,2:mx(2)-2:2,1:nccv) &
+               + a3*qc(mb(1,2)+1,mb(2,1)+1:mb(2,2):1,1:nccv)
 !
-    qf(mx(1)+1,1,1:nccv) &
-      = a1*qf(mx(1)-1,1,1:nccv) &
-      + a2*qf(mx(1)  ,1,1:nccv) &
-      + a3*(b1*qc(mb(1,2)+1,mb(2,1)-1,1:nccv) &
-      +     b2*qc(mb(1,2)+1,mb(2,1)  ,1:nccv) &
-      +     b3*qc(mb(1,2)+1,mb(2,1)+1,1:nccv))
-  END IF
+            qf(mx(1)+1,1,1:nccv) &
+               = a1*qf(mx(1)-1,1,1:nccv) &
+               + a2*qf(mx(1)  ,1,1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,1)-1,1:nccv) &
+               +     b2*qc(mb(1,2)+1,mb(2,1)  ,1:nccv) &
+               +     b3*qc(mb(1,2)+1,mb(2,1)+1,1:nccv))
+         END IF
 !
 ! Face #2, Black:
-  IF(ipass==2 .OR. ipass==0) THEN
-    qf(mx(1)+1,2:mx(2)-2:2,1:nccv) &
-      = a1*qf(mx(1)-1,4:mx(2)  :2,1:nccv) &
-      + a2*qf(mx(1)  ,3:mx(2)-1:2,1:nccv) &
-      + a3*qc(mb(1,2)+1,mb(2,1):mb(2,2)-1:1,1:nccv)
+         IF(ipass==2 .OR. ipass==0) THEN
+            qf(mx(1)+1,2:mx(2)-2:2,1:nccv) &
+               = a1*qf(mx(1)-1,4:mx(2)  :2,1:nccv) &
+               + a2*qf(mx(1)  ,3:mx(2)-1:2,1:nccv) &
+               + a3*qc(mb(1,2)+1,mb(2,1):mb(2,2)-1:1,1:nccv)
 !
-    qf(mx(1)+1,mx(2),1:nccv) &
-      = a1*qf(mx(1)-1,mx(2),1:nccv) &
-      + a2*qf(mx(1)  ,mx(2),1:nccv) &
-      + a3*(b1*qc(mb(1,2)+1,mb(2,2)+1,1:nccv) &
-      +     b2*qc(mb(1,2)+1,mb(2,2)  ,1:nccv) &
-      +     b3*qc(mb(1,2)+1,mb(2,2)-1,1:nccv))
-  END IF
+            qf(mx(1)+1,mx(2),1:nccv) &
+               = a1*qf(mx(1)-1,mx(2),1:nccv) &
+               + a2*qf(mx(1)  ,mx(2),1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,2)+1,1:nccv) &
+               +     b2*qc(mb(1,2)+1,mb(2,2)  ,1:nccv) &
+               +     b3*qc(mb(1,2)+1,mb(2,2)-1,1:nccv))
+         END IF
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-SELECT CASE(mthbc(3))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(3))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #3, Red:
-  IF(ipass==1 .OR. ipass==0) THEN
-    qf(2:mx(1)-2:2,0,1:nccv) &
-      = a1*qf(4:mx(1)  :2,2,1:nccv) &
-      + a2*qf(3:mx(1)-1:2,1,1:nccv) &
-      + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1)-1,1:nccv)
+         IF(ipass==1 .OR. ipass==0) THEN
+            qf(2:mx(1)-2:2,0,1:nccv) &
+               = a1*qf(4:mx(1)  :2,2,1:nccv) &
+               + a2*qf(3:mx(1)-1:2,1,1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1)-1,1:nccv)
 !
-    qf(mx(1),0,1:nccv) &
-      = a1*qf(mx(1),2,1:nccv) &
-      + a2*qf(mx(1),1,1:nccv) &
-      + a3*(b1*qc(mb(1,2)+1,mb(2,1)-1,1:nccv) &
-      +     b2*qc(mb(1,2)  ,mb(2,1)-1,1:nccv) &
-      +     b3*qc(mb(1,2)-1,mb(2,1)-1,1:nccv))
-  END IF
+            qf(mx(1),0,1:nccv) &
+               = a1*qf(mx(1),2,1:nccv) &
+               + a2*qf(mx(1),1,1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,1)-1,1:nccv) &
+               +     b2*qc(mb(1,2)  ,mb(2,1)-1,1:nccv) &
+               +     b3*qc(mb(1,2)-1,mb(2,1)-1,1:nccv))
+         END IF
 !
 ! Face #3, Black:
-  IF(ipass==2 .OR. ipass==0) THEN
-    qf(3:mx(1)-1:2,0,1:nccv) &
-      = a1*qf(1:mx(1)-3:2,2,1:nccv) &
-      + a2*qf(2:mx(1)-2:2,1,1:nccv) &
-      + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1)-1,1:nccv)
+         IF(ipass==2 .OR. ipass==0) THEN
+            qf(3:mx(1)-1:2,0,1:nccv) &
+               = a1*qf(1:mx(1)-3:2,2,1:nccv) &
+               + a2*qf(2:mx(1)-2:2,1,1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1)-1,1:nccv)
 !
-    qf(1,0,1:nccv) &
-      = a1*qf(1,2,1:nccv) &
-      + a2*qf(1,1,1:nccv) &
-      + a3*(b1*qc(mb(1,1)-1,mb(2,1)-1,1:nccv) &
-      +     b2*qc(mb(1,1)  ,mb(2,1)-1,1:nccv) &
-      +     b3*qc(mb(1,1)+1,mb(2,1)-1,1:nccv))
-  END IF
+            qf(1,0,1:nccv) &
+               = a1*qf(1,2,1:nccv) &
+               + a2*qf(1,1,1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,1)-1,1:nccv) &
+               +     b2*qc(mb(1,1)  ,mb(2,1)-1,1:nccv) &
+               +     b3*qc(mb(1,1)+1,mb(2,1)-1,1:nccv))
+         END IF
 !
-CASE DEFAULT
-  CONTINUE
-END SELECT
+       CASE DEFAULT
+         CONTINUE
+      END SELECT
 !
-SELECT CASE(mthbc(4))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(4))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #4, Red:
-  IF(ipass==1 .OR. ipass==0) THEN
-    qf(3:mx(1)-1:2,mx(2)+1,1:nccv) &
-      = a1*qf(1:mx(1)-3:2,mx(2)-1,1:nccv) &
-      + a2*qf(2:mx(1)-2:2,mx(2)  ,1:nccv) &
-      + a3*qc(mb(1,1)+1:mb(1,2),mb(2,2)+1,1:nccv)
+         IF(ipass==1 .OR. ipass==0) THEN
+            qf(3:mx(1)-1:2,mx(2)+1,1:nccv) &
+               = a1*qf(1:mx(1)-3:2,mx(2)-1,1:nccv) &
+               + a2*qf(2:mx(1)-2:2,mx(2)  ,1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),mb(2,2)+1,1:nccv)
 !
-    qf(1,mx(2)+1,1:nccv) &
-      = a1*qf(1,mx(2)-1,1:nccv) &
-      + a2*qf(1,mx(2)  ,1:nccv) &
-      + a3*(b1*qc(mb(1,1)-1,mb(2,2)+1,1:nccv) &
-      +     b2*qc(mb(1,1)  ,mb(2,2)+1,1:nccv) &
-      +     b3*qc(mb(1,1)+1,mb(2,2)+1,1:nccv))
-  END IF
+            qf(1,mx(2)+1,1:nccv) &
+               = a1*qf(1,mx(2)-1,1:nccv) &
+               + a2*qf(1,mx(2)  ,1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,2)+1,1:nccv) &
+               +     b2*qc(mb(1,1)  ,mb(2,2)+1,1:nccv) &
+               +     b3*qc(mb(1,1)+1,mb(2,2)+1,1:nccv))
+         END IF
 !
 ! Face #4, Black:
-  IF(ipass==2 .OR. ipass==0) THEN
-    qf(2:mx(1)-2:2,mx(2)+1,1:nccv) &
-      = a1*qf(4:mx(1)  :2,mx(2)-1,1:nccv) &
-      + a2*qf(3:mx(1)-1:2,mx(2)  ,1:nccv) &
-      + a3*qc(mb(1,1):mb(1,2)-1,mb(2,2)+1,1:nccv)
+         IF(ipass==2 .OR. ipass==0) THEN
+            qf(2:mx(1)-2:2,mx(2)+1,1:nccv) &
+               = a1*qf(4:mx(1)  :2,mx(2)-1,1:nccv) &
+               + a2*qf(3:mx(1)-1:2,mx(2)  ,1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,mb(2,2)+1,1:nccv)
 !
-    qf(mx(1),mx(2)+1,1:nccv) &
-      =          a1*qf(mx(1),mx(2)-1,1:nccv) &
-      + a2*qf(mx(1),mx(2)  ,1:nccv) &
-      + a3*(b1*qc(mb(1,2)+1,mb(2,2)+1,1:nccv) &
-      +     b2*qc(mb(1,2)  ,mb(2,2)+1,1:nccv) &
-      +     b3*qc(mb(1,2)-1,mb(2,2)+1,1:nccv))
-  END IF
+            qf(mx(1),mx(2)+1,1:nccv) &
+               =          a1*qf(mx(1),mx(2)-1,1:nccv) &
+               + a2*qf(mx(1),mx(2)  ,1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,2)+1,1:nccv) &
+               +     b2*qc(mb(1,2)  ,mb(2,2)+1,1:nccv) &
+               +     b3*qc(mb(1,2)-1,mb(2,2)+1,1:nccv))
+         END IF
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-END SUBROUTINE Interpolate2D
+   END SUBROUTINE Interpolate2D
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE Interpolate2DEdgeVars(v1f,v1c,mx,mb,mthbc,ipass)
-USE NodeInfoDef, ONLY: r8, nfcv
-IMPLICIT NONE
+   SUBROUTINE Interpolate2DEdgeVars(v1f,v1c,mx,mb,mthbc,ipass)
+      USE NodeInfoDef, ONLY: r8, nfcv
+      IMPLICIT NONE
 !
-REAL(KIND=r8), DIMENSION(-1:,0:,1:), INTENT(IN OUT):: v1f
-REAL(KIND=r8), DIMENSION(-1:,0:,1:), INTENT(IN    ):: v1c
-INTEGER, DIMENSION(1:2), INTENT(IN):: mx
-INTEGER, DIMENSION(1:2,1:2), INTENT(IN):: mb
-INTEGER, DIMENSION(1:4), INTENT(IN):: mthbc
-INTEGER, INTENT(IN):: ipass
+      REAL(KIND=r8), DIMENSION(-1:,0:,1:), INTENT(IN OUT):: v1f
+      REAL(KIND=r8), DIMENSION(-1:,0:,1:), INTENT(IN    ):: v1c
+      INTEGER, DIMENSION(1:2), INTENT(IN):: mx
+      INTEGER, DIMENSION(1:2,1:2), INTENT(IN):: mb
+      INTEGER, DIMENSION(1:4), INTENT(IN):: mthbc
+      INTEGER, INTENT(IN):: ipass
 !
 ! Faces:
 !
-SELECT CASE(mthbc(1))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(1))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #1:
-       v1f(-1,1:mx(2)-1:2,1:nfcv) &
-  = t1*v1f( 1,1:mx(2)-1:2,1:nfcv) &
-  + t2*v1f( 0,1:mx(2)-1:2,1:nfcv) &
-  + t3*(b1*v1c(mb(1,1)-2,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
-  +     b2*v1c(mb(1,1)-2,mb(2,1)  :mb(2,2)  ,1:nfcv) &
-  +     b3*v1c(mb(1,1)-2,mb(2,1)+1:mb(2,2)+1,1:nfcv))
+         v1f(-1,1:mx(2)-1:2,1:nfcv) &
+            = t1*v1f( 1,1:mx(2)-1:2,1:nfcv) &
+            + t2*v1f( 0,1:mx(2)-1:2,1:nfcv) &
+            + t3*(b1*v1c(mb(1,1)-2,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
+            +     b2*v1c(mb(1,1)-2,mb(2,1)  :mb(2,2)  ,1:nfcv) &
+            +     b3*v1c(mb(1,1)-2,mb(2,1)+1:mb(2,2)+1,1:nfcv))
 !
-       v1f(-1,2:mx(2)  :2,1:nfcv) &
-  = t1*v1f( 1,2:mx(2)  :2,1:nfcv) &
-  + t2*v1f( 0,2:mx(2)  :2,1:nfcv) &
-  + t3*(b3*v1c(mb(1,1)-2,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
-  +     b2*v1c(mb(1,1)-2,mb(2,1)  :mb(2,2)  ,1:nfcv) &
-  +     b1*v1c(mb(1,1)-2,mb(2,1)+1:mb(2,2)+1,1:nfcv))
+         v1f(-1,2:mx(2)  :2,1:nfcv) &
+            = t1*v1f( 1,2:mx(2)  :2,1:nfcv) &
+            + t2*v1f( 0,2:mx(2)  :2,1:nfcv) &
+            + t3*(b3*v1c(mb(1,1)-2,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
+            +     b2*v1c(mb(1,1)-2,mb(2,1)  :mb(2,2)  ,1:nfcv) &
+            +     b1*v1c(mb(1,1)-2,mb(2,1)+1:mb(2,2)+1,1:nfcv))
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-SELECT CASE(mthbc(2))
+      SELECT CASE(mthbc(2))
 
-CASE(2,999) ! Periodic or Internal boundary.
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #2:
-       v1f(mx(1)+1,1:mx(2)-1:2,1:nfcv) &
-  = t1*v1f(mx(1)-1,1:mx(2)-1:2,1:nfcv) &
-  + t2*v1f(mx(1)  ,1:mx(2)-1:2,1:nfcv) &
-  + t3*(b1*v1c(mb(1,2)+1,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
-  +     b2*v1c(mb(1,2)+1,mb(2,1)  :mb(2,2)  ,1:nfcv) &
-  +     b3*v1c(mb(1,2)+1,mb(2,1)+1:mb(2,2)+1,1:nfcv))
+         v1f(mx(1)+1,1:mx(2)-1:2,1:nfcv) &
+            = t1*v1f(mx(1)-1,1:mx(2)-1:2,1:nfcv) &
+            + t2*v1f(mx(1)  ,1:mx(2)-1:2,1:nfcv) &
+            + t3*(b1*v1c(mb(1,2)+1,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
+            +     b2*v1c(mb(1,2)+1,mb(2,1)  :mb(2,2)  ,1:nfcv) &
+            +     b3*v1c(mb(1,2)+1,mb(2,1)+1:mb(2,2)+1,1:nfcv))
 !
-       v1f(mx(1)+1,2:mx(2)  :2,1:nfcv) &
-  = t1*v1f(mx(1)-1,2:mx(2)  :2,1:nfcv) &
-  + t2*v1f(mx(1)  ,2:mx(2)  :2,1:nfcv) &
-  + t3*(b3*v1c(mb(1,2)+1,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
-  +     b2*v1c(mb(1,2)+1,mb(2,1)  :mb(2,2)  ,1:nfcv) &
-  +     b1*v1c(mb(1,2)+1,mb(2,1)+1:mb(2,2)+1,1:nfcv))
+         v1f(mx(1)+1,2:mx(2)  :2,1:nfcv) &
+            = t1*v1f(mx(1)-1,2:mx(2)  :2,1:nfcv) &
+            + t2*v1f(mx(1)  ,2:mx(2)  :2,1:nfcv) &
+            + t3*(b3*v1c(mb(1,2)+1,mb(2,1)-1:mb(2,2)-1,1:nfcv) &
+            +     b2*v1c(mb(1,2)+1,mb(2,1)  :mb(2,2)  ,1:nfcv) &
+            +     b1*v1c(mb(1,2)+1,mb(2,1)+1:mb(2,2)+1,1:nfcv))
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-SELECT CASE(mthbc(3))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(3))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #3:
-       v1f(0:mx(1):2,0,1:nfcv) &
-  = a1*v1f(0:mx(1):2,2,1:nfcv) &
-  + a2*v1f(0:mx(1):2,1,1:nfcv) &
-  + a3*v1c(mb(1,1)-1:mb(1,2),mb(2,1)-1,1:nfcv)
+         v1f(0:mx(1):2,0,1:nfcv) &
+            = a1*v1f(0:mx(1):2,2,1:nfcv) &
+            + a2*v1f(0:mx(1):2,1,1:nfcv) &
+            + a3*v1c(mb(1,1)-1:mb(1,2),mb(2,1)-1,1:nfcv)
 !
-       v1f(1:mx(1)-1:2,0,1:nfcv) &
-  = a1*v1f(1:mx(1)-1:2,2,1:nfcv) &
-  + a2*v1f(1:mx(1)-1:2,1,1:nfcv) &
-  + a3*(v1c(mb(1,1)-1:mb(1,2)-1,mb(2,1)-1,1:nfcv) &
-  +     v1c(mb(1,1)  :mb(1,2)  ,mb(2,1)-1,1:nfcv))/2.0_r8
+         v1f(1:mx(1)-1:2,0,1:nfcv) &
+            = a1*v1f(1:mx(1)-1:2,2,1:nfcv) &
+            + a2*v1f(1:mx(1)-1:2,1,1:nfcv) &
+            + a3*(v1c(mb(1,1)-1:mb(1,2)-1,mb(2,1)-1,1:nfcv) &
+            +     v1c(mb(1,1)  :mb(1,2)  ,mb(2,1)-1,1:nfcv))/2.0_r8
 !
-CASE DEFAULT
-  CONTINUE
-END SELECT
+       CASE DEFAULT
+         CONTINUE
+      END SELECT
 !
-SELECT CASE(mthbc(4))
-CASE(2,999) ! Periodic or Internal boundary.
+      SELECT CASE(mthbc(4))
+       CASE(2,999) ! Periodic or Internal boundary.
 !
 ! Face #4:
-       v1f(0:mx(1):2,mx(2)+1,1:nfcv) &
-  = a1*v1f(0:mx(1):2,mx(2)-1,1:nfcv) &
-  + a2*v1f(0:mx(1):2,mx(2)  ,1:nfcv) &
-  + a3*v1c(mb(1,1)-1:mb(1,2),mb(2,2)+1,1:nfcv)
+         v1f(0:mx(1):2,mx(2)+1,1:nfcv) &
+            = a1*v1f(0:mx(1):2,mx(2)-1,1:nfcv) &
+            + a2*v1f(0:mx(1):2,mx(2)  ,1:nfcv) &
+            + a3*v1c(mb(1,1)-1:mb(1,2),mb(2,2)+1,1:nfcv)
 !
-       v1f(1:mx(1)-1:2,mx(2)+1,1:nfcv) &
-  = a1*v1f(1:mx(1)-1:2,mx(2)-1,1:nfcv) &
-  + a2*v1f(1:mx(1)-1:2,mx(2)  ,1:nfcv) &
-  + a3*(v1c(mb(1,1)-1:mb(1,2)-1,mb(2,2)+1,1:nfcv) &
-  +     v1c(mb(1,1)  :mb(1,2)  ,mb(2,2)+1,1:nfcv))/2.0_r8
+         v1f(1:mx(1)-1:2,mx(2)+1,1:nfcv) &
+            = a1*v1f(1:mx(1)-1:2,mx(2)-1,1:nfcv) &
+            + a2*v1f(1:mx(1)-1:2,mx(2)  ,1:nfcv) &
+            + a3*(v1c(mb(1,1)-1:mb(1,2)-1,mb(2,2)+1,1:nfcv) &
+            +     v1c(mb(1,1)  :mb(1,2)  ,mb(2,2)+1,1:nfcv))/2.0_r8
 !
-CASE DEFAULT
-  CONTINUE ! Physical boundary.
-END SELECT
+       CASE DEFAULT
+         CONTINUE ! Physical boundary.
+      END SELECT
 !
-END SUBROUTINE Interpolate2DEdgeVars
+   END SUBROUTINE Interpolate2DEdgeVars
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION TransferBC(grid1,grid2,dummy)
-USE NodeinfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION TransferBC(grid1,grid2,dummy)
+      USE NodeinfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
 ! Transfer boundary values among grids on same level
 !
-TYPE(nodeinfo):: grid1, grid2
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: grid1, grid2
+      TYPE(funcparam):: dummy
 !
-TransferBC = err_ok
+      TransferBC = err_ok
 !
 ! Check for inactive grids awaiting garbage collection
-IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
-   .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
+      IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
+         .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
 !
 ! Look for overlap of ghost cell regions of grid1 and grid2.  Order doesn't
 ! matter, as transfer goes both ways:
-CALL GhostOverlap(grid1,grid2)
+      CALL GhostOverlap(grid1,grid2)
 !
-END FUNCTION TransferBC
+   END FUNCTION TransferBC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE GhostOverlap(grid1,grid2,grid2offset)
-USE NodeinfoDef
-IMPLICIT NONE
+   SUBROUTINE GhostOverlap(grid1,grid2,grid2offset)
+      USE NodeinfoDef
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: grid1
-TYPE(nodeinfo):: grid2
-INTEGER, DIMENSION(1:maxdims), INTENT(IN), OPTIONAL:: grid2offset
+      TYPE(nodeinfo):: grid1
+      TYPE(nodeinfo):: grid2
+      INTEGER, DIMENSION(1:maxdims), INTENT(IN), OPTIONAL:: grid2offset
 !
 ! Assumes ghost layer of size mbc:
 !
-INTEGER:: grid1bdry, grid2bdry, m, n
-INTEGER, DIMENSION(1:maxdims,1:2):: mg1, mg2, mf1, mf2, ml1, ml2, ovg, ovg1, ovg2
+      INTEGER:: grid1bdry, grid2bdry, m, n
+      INTEGER, DIMENSION(1:maxdims,1:2):: mg1, mg2, mf1, mf2, ml1, ml2, ovg, ovg1, ovg2
 !
-mg1 = 1
-mg1(1:ndims,1:2) = grid1%mglobal(1:ndims,1:2)
+      mg1 = 1
+      mg1(1:ndims,1:2) = grid1%mglobal(1:ndims,1:2)
 !
-mg2 = 1
-IF(PRESENT(grid2offset)) THEN
-  DO n = 1, ndims
-    mg2(n,1:2) = grid2%mglobal(n,1:2)+grid2offset(n)
-  END DO
-ELSE
-  mg2(1:ndims,1:2) = grid2%mglobal(1:ndims,1:2)
-END IF
+      mg2 = 1
+      IF(PRESENT(grid2offset)) THEN
+         DO n = 1, ndims
+            mg2(n,1:2) = grid2%mglobal(n,1:2)+grid2offset(n)
+         END DO
+      ELSE
+         mg2(1:ndims,1:2) = grid2%mglobal(1:ndims,1:2)
+      END IF
 !
 ! Calculate overlapping region, taking into account the extra ghost layer(s)
 ! with the addition of +/-mbc:
-ovg = 1
-DO n = 1, ndims
-  ovg(n,1) = MAX(mg1(n,1)-mbc,mg2(n,1)-mbc)
-  ovg(n,2) = MIN(mg1(n,2)+mbc,mg2(n,2)+mbc)
-END DO
+      ovg = 1
+      DO n = 1, ndims
+         ovg(n,1) = MAX(mg1(n,1)-mbc,mg2(n,1)-mbc)
+         ovg(n,2) = MIN(mg1(n,2)+mbc,mg2(n,2)+mbc)
+      END DO
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+         CONTINUE
+      ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mg2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mg2(n,2))
+         ovg1 = 1; ovg2 = 1
+         DO n = 1, ndims
+            ovg1(n,1) = MAX(ovg(n,1),mg2(n,1))
+            ovg1(n,2) = MIN(ovg(n,2),mg2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mg1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mg1(n,2))
-END DO
-!
-! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
-ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
-!
-! Transfer:
-  grid1%q(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nccv) &
-= grid2%q(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nccv)
+            ovg2(n,1) = MAX(ovg(n,1),mg1(n,1))
+            ovg2(n,2) = MIN(ovg(n,2),mg1(n,2))
+         END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml1 = 1; ml2 = 1
+         ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-  grid2%q(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nccv) &
-= grid1%q(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nccv)
+         grid1%q(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nccv) &
+            = grid2%q(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nccv)
 !
-END IF
+! Convert to local coordinates by subtracting off the global offsets:
+         ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+!
+! Transfer:
+         grid2%q(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nccv) &
+            = grid1%q(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nccv)
+!
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Transfer v1-face variables:
-mf1 = mg1; mf1(1,1) = mg1(1,1)-1
-mf2 = mg2; mf2(1,1) = mg2(1,1)-1
+      mf1 = mg1; mf1(1,1) = mg1(1,1)-1
+      mf2 = mg2; mf2(1,1) = mg2(1,1)-1
 !
-ovg = 1
-DO n = 1, ndims
-  ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have 
-  ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
-END DO
+      ovg = 1
+      DO n = 1, ndims
+         ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have
+         ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
+      END DO
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+         CONTINUE
+      ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+         ovg1 = 1; ovg2 = 1
+         DO n = 1, ndims
+            ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+            ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
-!
-! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
-ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
-!
-! Transfer:
-  grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
-= grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
+            ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+            ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+         END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml1 = 1; ml2 = 1
+         ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-  grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-= grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+         grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
+            = grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
 !
-END IF
+! Convert to local coordinates by subtracting off the global offsets:
+         ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+!
+! Transfer:
+         grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+            = grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+!
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Transfer v2-face variables:
-mf1 = mg1; mf1(2,1) = mg1(2,1)-1
-mf2 = mg2; mf2(2,1) = mg2(2,1)-1
+      mf1 = mg1; mf1(2,1) = mg1(2,1)-1
+      mf2 = mg2; mf2(2,1) = mg2(2,1)-1
 !
-ovg = 1
-DO n = 1, ndims
-  ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have 
-  ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
-END DO
+      ovg = 1
+      DO n = 1, ndims
+         ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have
+         ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
+      END DO
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+         CONTINUE
+      ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+         ovg1 = 1; ovg2 = 1
+         DO n = 1, ndims
+            ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+            ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
-!
-! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
-ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
-!
-! Transfer:
-  grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
-= grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
+            ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+            ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+         END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml1 = 1; ml2 = 1
+         ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-  grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-= grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+         grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
+            = grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
 !
-END IF
+! Convert to local coordinates by subtracting off the global offsets:
+         ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+!
+! Transfer:
+         grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+            = grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+!
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-If (ndims == 3) THEN
+      If (ndims == 3) THEN
 ! Transfer v3-face variables:
-mf1 = mg1; mf1(3,1) = mg1(3,1)-1
-mf2 = mg2; mf2(3,1) = mg2(3,1)-1
+         mf1 = mg1; mf1(3,1) = mg1(3,1)-1
+         mf2 = mg2; mf2(3,1) = mg2(3,1)-1
 !
-ovg = 1
-DO n = 1, ndims
-  ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have 
-  ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
-END DO
+         ovg = 1
+         DO n = 1, ndims
+            ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! Face variables have
+            ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1) ! only 1 ghost layer:
+         END DO
 !
 ! Check for the empty set:
-	IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-	CONTINUE
-	ELSE
+         IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+            CONTINUE
+         ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+            ovg1 = 1; ovg2 = 1
+            DO n = 1, ndims
+               ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+               ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
-!
-! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
-ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
-!
-! Transfer:
-  grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
-= grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
+               ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+               ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+            END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+            ml1 = 1; ml2 = 1
+            ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+            ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-  grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-= grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+            grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv) &
+               = grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv)
 !
-	END IF
-END IF
+! Convert to local coordinates by subtracting off the global offsets:
+            ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+            ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+!
+! Transfer:
+            grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+               = grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+!
+         END IF
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! If the mesh is constructed, no need to procede:
-IF(meshbuildcomplete) RETURN
+      IF(meshbuildcomplete) RETURN
 !
 ! In the mesh-build phase, record the level numbers of the neighbors:
 !
 ! Recalculate overlapping region, taking into account the only 1 ghost layer:
 !
-mg1(1:ndims,1) = (mg1(1:ndims,1)+1)/2
-mg1(1:ndims,2) =  mg1(1:ndims,2)   /2
-mg2(1:ndims,1) = (mg2(1:ndims,1)+1)/2
-mg2(1:ndims,2) =  mg2(1:ndims,2)   /2
+      mg1(1:ndims,1) = (mg1(1:ndims,1)+1)/2
+      mg1(1:ndims,2) =  mg1(1:ndims,2)   /2
+      mg2(1:ndims,1) = (mg2(1:ndims,1)+1)/2
+      mg2(1:ndims,2) =  mg2(1:ndims,2)   /2
 !
-ovg = 1
-DO n = 1, ndims
-  ovg(n,1) = MAX(mg1(n,1)-1,mg2(n,1)-1)
-  ovg(n,2) = MIN(mg1(n,2)+1,mg2(n,2)+1)
-END DO
+      ovg = 1
+      DO n = 1, ndims
+         ovg(n,1) = MAX(mg1(n,1)-1,mg2(n,1)-1)
+         ovg(n,2) = MIN(mg1(n,2)+1,mg2(n,2)+1)
+      END DO
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) RETURN
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) RETURN
 !
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mg2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mg2(n,2))
+      ovg1 = 1; ovg2 = 1
+      DO n = 1, ndims
+         ovg1(n,1) = MAX(ovg(n,1),mg2(n,1))
+         ovg1(n,2) = MIN(ovg(n,2),mg2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mg1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mg1(n,2))
-END DO
+         ovg2(n,1) = MAX(ovg(n,1),mg1(n,1))
+         ovg2(n,2) = MIN(ovg(n,2),mg1(n,2))
+      END DO
 !
-ml1 = 1; ml2 = 1
-ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+      ml1 = 1; ml2 = 1
+      ml1(1:ndims,1) = ovg1(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+      ml1(1:ndims,2) = ovg1(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+      ml2(1:ndims,1) = ovg1(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+      ml2(1:ndims,2) = ovg1(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
-  grid1%levellandscape(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2)) &
-= grid2%levellandscape(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2))
+      grid1%levellandscape(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2)) &
+         = grid2%levellandscape(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2))
 !
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+      ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+      ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+      ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+      ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
-  grid2%levellandscape(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2)) &
-= grid1%levellandscape(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2))
+      grid2%levellandscape(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2)) &
+         = grid1%levellandscape(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2))
 !
-END SUBROUTINE GhostOverlap
+   END SUBROUTINE GhostOverlap
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION TransferBCOneWayFC(grid1,grid2,dummy)
-USE NodeinfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION TransferBCOneWayFC(grid1,grid2,dummy)
+      USE NodeinfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
 ! Transfer boundary values from grid1 to grid2 (one way) on same level
 !
-TYPE(nodeinfo):: grid1, grid2
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: grid1, grid2
+      TYPE(funcparam):: dummy
 !
-TransferBCOneWayFC = err_ok
+      TransferBCOneWayFC = err_ok
 !
 ! Check for inactive grids awaiting garbage collection
-IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
-   .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
+      IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
+         .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
 !
-! Look for overlap of ghost cell regions of grid1 and grid2.  Order DOES 
+! Look for overlap of ghost cell regions of grid1 and grid2.  Order DOES
 ! matter, as transfer goes only way grid1:
-CALL GhostOverlapOneWayFC(grid1,grid2,dummy%iswitch)
+      CALL GhostOverlapOneWayFC(grid1,grid2,dummy%iswitch)
 !
-END FUNCTION TransferBCOneWayFC
+   END FUNCTION TransferBCOneWayFC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE GhostOverlapOneWayFC(grid1,grid2,field,grid2offset)
-USE NodeinfoDef
-IMPLICIT NONE
+   SUBROUTINE GhostOverlapOneWayFC(grid1,grid2,field,grid2offset)
+      USE NodeinfoDef
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: grid1
-TYPE(nodeinfo):: grid2
-INTEGER, INTENT(IN):: field
-INTEGER, DIMENSION(1:maxdims), INTENT(IN), OPTIONAL:: grid2offset
+      TYPE(nodeinfo):: grid1
+      TYPE(nodeinfo):: grid2
+      INTEGER, INTENT(IN):: field
+      INTEGER, DIMENSION(1:maxdims), INTENT(IN), OPTIONAL:: grid2offset
 !
 ! Assumes ghost layer of size mbc:
 !
-INTEGER:: grid1bdry, grid2bdry, m, n
-INTEGER, DIMENSION(1:maxdims,1:2):: mg1, mg2, mf1, mf2, ml1, ml2, ovg, ovg1, ovg2
+      INTEGER:: grid1bdry, grid2bdry, m, n
+      INTEGER, DIMENSION(1:maxdims,1:2):: mg1, mg2, mf1, mf2, ml1, ml2, ovg, ovg1, ovg2
 !
-mg1 = 1
-mg1(1:ndims,1:2) = grid1%mglobal(1:ndims,1:2)
+      mg1 = 1
+      mg1(1:ndims,1:2) = grid1%mglobal(1:ndims,1:2)
 !
-mg2 = 1
-IF(PRESENT(grid2offset)) THEN
-  DO n = 1, ndims
-    mg2(n,1:2) = grid2%mglobal(n,1:2)+grid2offset(n)
-  END DO
-ELSE
-  mg2(1:ndims,1:2) = grid2%mglobal(1:ndims,1:2)
-END IF
+      mg2 = 1
+      IF(PRESENT(grid2offset)) THEN
+         DO n = 1, ndims
+            mg2(n,1:2) = grid2%mglobal(n,1:2)+grid2offset(n)
+         END DO
+      ELSE
+         mg2(1:ndims,1:2) = grid2%mglobal(1:ndims,1:2)
+      END IF
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Transfer v1-f1-face variables:
-mf1 = mg1; mf1(1,1) = mg1(1,1)-1
-mf2 = mg2; mf2(1,1) = mg2(1,1)-1
+      mf1 = mg1; mf1(1,1) = mg1(1,1)-1
+      mf2 = mg2; mf2(1,1) = mg2(1,1)-1
 !
-ovg = 1
+      ovg = 1
 !
-SELECT CASE(field)
+      SELECT CASE(field)
 !
 ! Unknown velocity variables v1:
-CASE(1)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer: 
-    ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
-  END DO
+       CASE(1)
+         DO n = 1, ndims
+            ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer:
+            ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
+         END DO
 !
 ! Known loading variables f1:
-CASE(2)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
-    ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
-  END DO
-CASE DEFAULT
-  PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
-  STOP
-END SELECT
+       CASE(2)
+         DO n = 1, ndims
+            ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
+            ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
+         END DO
+       CASE DEFAULT
+         PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
+         STOP
+      END SELECT
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+         CONTINUE
+      ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+         ovg1 = 1; ovg2 = 1
+         DO n = 1, ndims
+            ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+            ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
+            ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+            ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+         END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
+         ml1 = 1; ml2 = 1
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-SELECT CASE(field)
-CASE(1)
-    grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-CASE(2)
-    grid2%f1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%f1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-END SELECT
+         SELECT CASE(field)
+          CASE(1)
+            grid2%v1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+               = grid1%v1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+          CASE(2)
+            grid2%f1(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+               = grid1%f1(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+         END SELECT
 !
-END IF
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Transfer v2-f2-face variables:
-mf1 = mg1; mf1(2,1) = mg1(2,1)-1
-mf2 = mg2; mf2(2,1) = mg2(2,1)-1
+      mf1 = mg1; mf1(2,1) = mg1(2,1)-1
+      mf2 = mg2; mf2(2,1) = mg2(2,1)-1
 !
-ovg = 1
+      ovg = 1
 !
-SELECT CASE(field)
+      SELECT CASE(field)
 !
 ! Unknown velocity variables v2:
-CASE(1)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer: 
-    ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
-  END DO
+       CASE(1)
+         DO n = 1, ndims
+            ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer:
+            ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
+         END DO
 !
 ! Known loading variables f2:
-CASE(2)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
-    ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
-  END DO
-CASE DEFAULT
-  PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
-  STOP
-END SELECT
+       CASE(2)
+         DO n = 1, ndims
+            ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
+            ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
+         END DO
+       CASE DEFAULT
+         PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
+         STOP
+      END SELECT
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+      IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+         CONTINUE
+      ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+         ovg1 = 1; ovg2 = 1
+         DO n = 1, ndims
+            ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+            ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
+            ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+            ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+         END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
+         ml1 = 1; ml2 = 1
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+         ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+         ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-SELECT CASE(field)
-CASE(1)
-    grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-CASE(2)
-    grid2%f2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%f2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-END SELECT
+         SELECT CASE(field)
+          CASE(1)
+            grid2%v2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+               = grid1%v2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+          CASE(2)
+            grid2%f2(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+               = grid1%f2(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+         END SELECT
 !
-END IF
+      END IF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
 ! Transfer v3-f3-face variables:
 
-IF (ndims==3) THEN
+      IF (ndims==3) THEN
 
-mf1 = mg1; mf1(3,1) = mg1(3,1)-1
-mf2 = mg2; mf2(3,1) = mg2(3,1)-1
+         mf1 = mg1; mf1(3,1) = mg1(3,1)-1
+         mf2 = mg2; mf2(3,1) = mg2(3,1)-1
 !
-ovg = 1
+         ovg = 1
 !
-SELECT CASE(field)
+         SELECT CASE(field)
 !
 ! Unknown velocity variables v3:
-CASE(1)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer: 
-    ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
-  END DO
+          CASE(1)
+            DO n = 1, ndims
+               ovg(n,1) = MAX(mf1(n,1)-1,mf2(n,1)-1) ! One ghost layer:
+               ovg(n,2) = MIN(mf1(n,2)+1,mf2(n,2)+1)
+            END DO
 !
 ! Known loading variables f3:
-CASE(2)
-  DO n = 1, ndims
-    ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
-    ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
-  END DO
-CASE DEFAULT
-  PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
-  STOP
-END SELECT
+          CASE(2)
+            DO n = 1, ndims
+               ovg(n,1) = MAX(mf1(n,1),mf2(n,1)) ! No ghost layer:
+               ovg(n,2) = MIN(mf1(n,2),mf2(n,2))
+            END DO
+          CASE DEFAULT
+            PRINT *, 'BSAM 2.0 GhostOverlapOneWayFace: Only field = 1,2 supported.'
+            STOP
+         END SELECT
 !
 ! Check for the empty set:
-IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
-  CONTINUE
-ELSE
+         IF(ANY((ovg(1:ndims,2)-ovg(1:ndims,1))<0)) THEN
+            CONTINUE
+         ELSE
 !
 ! Nonempty; begin transfer:
 !
 ! ovg1 is the global overlap of ovg and mg2;
 ! ovg2 is the global overlap of ovg and mg1;
 ! These must have nonempty overlap:
-ovg1 = 1; ovg2 = 1
-DO n = 1, ndims
-  ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
-  ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
+            ovg1 = 1; ovg2 = 1
+            DO n = 1, ndims
+               ovg1(n,1) = MAX(ovg(n,1),mf2(n,1))
+               ovg1(n,2) = MIN(ovg(n,2),mf2(n,2))
 !
-  ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
-  ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
-END DO
+               ovg2(n,1) = MAX(ovg(n,1),mf1(n,1))
+               ovg2(n,2) = MIN(ovg(n,2),mf1(n,2))
+            END DO
 !
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1 = 1; ml2 = 1
+            ml1 = 1; ml2 = 1
 ! Convert to local coordinates by subtracting off the global offsets:
-ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
-ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
-ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
+            ml1(1:ndims,1) = ovg2(1:ndims,1)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml1(1:ndims,2) = ovg2(1:ndims,2)-mg1(1:ndims,1)+1 ! Grid 1 local
+            ml2(1:ndims,1) = ovg2(1:ndims,1)-mg2(1:ndims,1)+1 ! Grid 2 local
+            ml2(1:ndims,2) = ovg2(1:ndims,2)-mg2(1:ndims,1)+1 ! Grid 2 local
 !
 ! Transfer:
-SELECT CASE(field)
-CASE(1)
-    grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-CASE(2)
-    grid2%f3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
-  = grid1%f3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
-END SELECT
+            SELECT CASE(field)
+             CASE(1)
+               grid2%v3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+                  = grid1%v3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+             CASE(2)
+               grid2%f3(ml2(1,1):ml2(1,2),ml2(2,1):ml2(2,2),ml2(3,1):ml2(3,2),1:nfcv) &
+                  = grid1%f3(ml1(1,1):ml1(1,2),ml1(2,1):ml1(2,2),ml1(3,1):ml1(3,2),1:nfcv)
+            END SELECT
 !
-END IF
-END IF
+         END IF
+      END IF
 !
-END SUBROUTINE GhostOverlapOneWayFC
+   END SUBROUTINE GhostOverlapOneWayFC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION SelfPeriodicBC(info,timestepparam)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION SelfPeriodicBC(info,timestepparam)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: timestepparam
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: timestepparam
 !
-INTEGER:: ibc, level, n
-INTEGER, DIMENSION(1:maxdims):: cmx, mx
+      INTEGER:: ibc, level, n
+      INTEGER, DIMENSION(1:maxdims):: cmx, mx
 !
-SelfPeriodicBC = err_OK
+      SelfPeriodicBC = err_OK
 !
-level = info%level
+      level = info%level
 !
-mx = 1; cmx = 1
-mx(1:ndims) = info%mx(1:ndims)
-cmx(1:ndims) = mx(1:ndims)/2
+      mx = 1; cmx = 1
+      mx(1:ndims) = info%mx(1:ndims)
+      cmx(1:ndims) = mx(1:ndims)/2
 !
 ! Check for inactive grid awaiting garbage collection
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
-SELECT CASE(ndims)
+      SELECT CASE(ndims)
 !
 ! Two dimensions:
-  CASE (2)
-    IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2) THEN
-      DO ibc = 1, mbc
-        DO n = 1, nccv
-            info%q(mx(1)+  ibc,1-mbc:mx(2)+mbc,1,n) &
-          = info%q(        ibc,1-mbc:mx(2)+mbc,1,n)
-            info%q(      1-ibc,1-mbc:mx(2)+mbc,1,n) &
-          = info%q(mx(1)+1-ibc,1-mbc:mx(2)+mbc,1,n)
-        END DO
-      END DO
+       CASE (2)
+         IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2) THEN
+            DO ibc = 1, mbc
+               DO n = 1, nccv
+                  info%q(mx(1)+  ibc,1-mbc:mx(2)+mbc,1,n) &
+                     = info%q(        ibc,1-mbc:mx(2)+mbc,1,n)
+                  info%q(      1-ibc,1-mbc:mx(2)+mbc,1,n) &
+                     = info%q(mx(1)+1-ibc,1-mbc:mx(2)+mbc,1,n)
+               END DO
+            END DO
 !
 ! v1 face variables: 3 exchanges needed:
-         info%v1(mx(1)  ,0:mx(2)+1,1,1:nfcv) &
-      =  info%v1(      0,0:mx(2)+1,1,1:nfcv)
-         info%v1(mx(1)+1,0:mx(2)+1,1,1:nfcv) &
-      =  info%v1(      1,0:mx(2)+1,1,1:nfcv)
-         info%v1(     -1,0:mx(2)+1,1,1:nfcv) &
-      =  info%v1(mx(1)-1,0:mx(2)+1,1,1:nfcv)
+            info%v1(mx(1)  ,0:mx(2)+1,1,1:nfcv) &
+               =  info%v1(      0,0:mx(2)+1,1,1:nfcv)
+            info%v1(mx(1)+1,0:mx(2)+1,1,1:nfcv) &
+               =  info%v1(      1,0:mx(2)+1,1,1:nfcv)
+            info%v1(     -1,0:mx(2)+1,1,1:nfcv) &
+               =  info%v1(mx(1)-1,0:mx(2)+1,1,1:nfcv)
 !
 ! v1 face variables: 2 exchanges needed:
-        info%v2(mx(1)+1,-1:mx(2)+1,1,1:nfcv) &
-      = info%v2(      1,-1:mx(2)+1,1,1:nfcv)
-        info%v2(      0,-1:mx(2)+1,1,1:nfcv) &
-      = info%v2(mx(1)-1,-1:mx(2)+1,1,1:nfcv)
+            info%v2(mx(1)+1,-1:mx(2)+1,1,1:nfcv) &
+               = info%v2(      1,-1:mx(2)+1,1,1:nfcv)
+            info%v2(      0,-1:mx(2)+1,1,1:nfcv) &
+               = info%v2(mx(1)-1,-1:mx(2)+1,1,1:nfcv)
 !
-      IF(.NOT. meshbuildcomplete) THEN
-        info%levellandscape(       0,1:cmx(2),1) = level
-        info%levellandscape(cmx(1)+1,1:cmx(2),1) = level
-      END IF
-    END IF
+            IF(.NOT. meshbuildcomplete) THEN
+               info%levellandscape(       0,1:cmx(2),1) = level
+               info%levellandscape(cmx(1)+1,1:cmx(2),1) = level
+            END IF
+         END IF
 !
-    IF(info%mthbc(3)==2 .AND. info%mthbc(4)==2) THEN
-      DO ibc = 1, mbc
-          info%q(1-mbc:mx(1)+mbc,mx(2)+  ibc,1,1:nccv) &
-        = info%q(1-mbc:mx(1)+mbc,        ibc,1,1:nccv)
-          info%q(1-mbc:mx(1)+mbc,      1-ibc,1,1:nccv) &
-        = info%q(1-mbc:mx(1)+mbc,mx(2)+1-ibc,1,1:nccv)
-      END DO
+         IF(info%mthbc(3)==2 .AND. info%mthbc(4)==2) THEN
+            DO ibc = 1, mbc
+               info%q(1-mbc:mx(1)+mbc,mx(2)+  ibc,1,1:nccv) &
+                  = info%q(1-mbc:mx(1)+mbc,        ibc,1,1:nccv)
+               info%q(1-mbc:mx(1)+mbc,      1-ibc,1,1:nccv) &
+                  = info%q(1-mbc:mx(1)+mbc,mx(2)+1-ibc,1,1:nccv)
+            END DO
 !
 ! v1 face variables: 2 exchanges needed:
-         info%v1(-1:mx(1)+1,mx(2)+1,1,1:nfcv) &
-      =  info%v1(-1:mx(1)+1,      1,1,1:nfcv)
-         info%v1(-1:mx(1)+1,      0,1,1:nfcv) &
-      =  info%v1(-1:mx(1)+1,mx(2)  ,1,1:nfcv)
+            info%v1(-1:mx(1)+1,mx(2)+1,1,1:nfcv) &
+               =  info%v1(-1:mx(1)+1,      1,1,1:nfcv)
+            info%v1(-1:mx(1)+1,      0,1,1:nfcv) &
+               =  info%v1(-1:mx(1)+1,mx(2)  ,1,1:nfcv)
 !
 ! v2 face variables: 3 exchanges needed:
-         info%v2( 0:mx(1)+1,mx(2)  ,1,1:nfcv) &
-      =  info%v2( 0:mx(1)+1,      0,1,1:nfcv)
-         info%v2( 0:mx(1)+1,mx(2)+1,1,1:nfcv) &
-      =  info%v2( 0:mx(1)+1,      1,1,1:nfcv)
-         info%v2( 0:mx(1)+1,     -1,1,1:nfcv) &
-      =  info%v2( 0:mx(1)+1,mx(2)-1,1,1:nfcv)
+            info%v2( 0:mx(1)+1,mx(2)  ,1,1:nfcv) &
+               =  info%v2( 0:mx(1)+1,      0,1,1:nfcv)
+            info%v2( 0:mx(1)+1,mx(2)+1,1,1:nfcv) &
+               =  info%v2( 0:mx(1)+1,      1,1,1:nfcv)
+            info%v2( 0:mx(1)+1,     -1,1,1:nfcv) &
+               =  info%v2( 0:mx(1)+1,mx(2)-1,1,1:nfcv)
 !
-      IF(.NOT. meshbuildcomplete) THEN
-        info%levellandscape(1:cmx(1),       0,1) = level
-        info%levellandscape(1:cmx(1),cmx(2)+1,1) = level
-      END IF
-    END IF
+            IF(.NOT. meshbuildcomplete) THEN
+               info%levellandscape(1:cmx(1),       0,1) = level
+               info%levellandscape(1:cmx(1),cmx(2)+1,1) = level
+            END IF
+         END IF
 !
 ! If the whole domain is refined then it is possible that the grid touches
 ! corner-to-corner. We record this unlikely event:
-    IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2 .AND. &
-       info%mthbc(3)==2 .AND. info%mthbc(4)==2 .AND. &
-       (.NOT. meshbuildcomplete)) THEN
-      info%levellandscape(       0,       0,1) = level
-      info%levellandscape(cmx(1)+1,       0,1) = level
-      info%levellandscape(       0,cmx(2)+1,1) = level
-      info%levellandscape(cmx(1)+1,cmx(2)+1,1) = level
-    END IF
+         IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2 .AND. &
+            info%mthbc(3)==2 .AND. info%mthbc(4)==2 .AND. &
+            (.NOT. meshbuildcomplete)) THEN
+            info%levellandscape(       0,       0,1) = level
+            info%levellandscape(cmx(1)+1,       0,1) = level
+            info%levellandscape(       0,cmx(2)+1,1) = level
+            info%levellandscape(cmx(1)+1,cmx(2)+1,1) = level
+         END IF
 !
 ! Three dimensions:
-  CASE (3)
-    IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2) THEN
-      DO ibc = 1, mbc
-        DO n = 1, nccv
-          info%q(mx(1)+ibc,:,:,n) = info%q(        ibc,:,:,n)
-          info%q(    1-ibc,:,:,n) = info%q(mx(1)+1-ibc,:,:,n)
-        END DO
-      END DO
-    END IF
-    IF(info%mthbc(3)==2 .AND. info%mthbc(4)==2) THEN
-      DO ibc = 1, mbc
-        info%q(:,mx(2)+ibc,:,1:nccv) = info%q(:,        ibc,:,1:nccv)
-        info%q(:,    1-ibc,:,1:nccv) = info%q(:,mx(2)+1-ibc,:,1:nccv)
-      END DO
-    END IF
-    IF(info%mthbc(5)==2 .AND. info%mthbc(6)==2) THEN
-      DO ibc = 1, mbc
-        info%q(:,:,mx(3)+ibc,1:nccv) = info%q(:,:,        ibc,1:nccv)
-        info%q(:,:,    1-ibc,1:nccv) = info%q(:,:,mx(3)+1-ibc,1:nccv)
-      END DO
-    END IF
-  CASE DEFAULT
-    PRINT *,'SelfPeriodicBC: Sorry. Code only works up to ndims=3.'
-    STOP
-END SELECT
-END FUNCTION SelfPeriodicBC
+       CASE (3)
+         IF(info%mthbc(1)==2 .AND. info%mthbc(2)==2) THEN
+            DO ibc = 1, mbc
+               DO n = 1, nccv
+                  info%q(mx(1)+ibc,:,:,n) = info%q(        ibc,:,:,n)
+                  info%q(    1-ibc,:,:,n) = info%q(mx(1)+1-ibc,:,:,n)
+               END DO
+            END DO
+         END IF
+         IF(info%mthbc(3)==2 .AND. info%mthbc(4)==2) THEN
+            DO ibc = 1, mbc
+               info%q(:,mx(2)+ibc,:,1:nccv) = info%q(:,        ibc,:,1:nccv)
+               info%q(:,    1-ibc,:,1:nccv) = info%q(:,mx(2)+1-ibc,:,1:nccv)
+            END DO
+         END IF
+         IF(info%mthbc(5)==2 .AND. info%mthbc(6)==2) THEN
+            DO ibc = 1, mbc
+               info%q(:,:,mx(3)+ibc,1:nccv) = info%q(:,:,        ibc,1:nccv)
+               info%q(:,:,    1-ibc,1:nccv) = info%q(:,:,mx(3)+1-ibc,1:nccv)
+            END DO
+         END IF
+       CASE DEFAULT
+         PRINT *,'SelfPeriodicBC: Sorry. Code only works up to ndims=3.'
+         STOP
+      END SELECT
+   END FUNCTION SelfPeriodicBC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION TransferPeriodicBC(grid1,grid2,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION TransferPeriodicBC(grid1,grid2,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
 ! Transfer periodic boundary values among grids on same level:
 !
-TYPE(nodeinfo):: grid1, grid2
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: grid1, grid2
+      TYPE(funcparam):: dummy
 !
-INTEGER:: offset, polarity
-INTEGER, DIMENSION(1:maxdims):: grid2offset
+      INTEGER:: offset, polarity
+      INTEGER, DIMENSION(1:maxdims):: grid2offset
 !
-TransferPeriodicBC = err_ok
+      TransferPeriodicBC = err_ok
 !
 ! Check for inactive grids awaiting garbage collection:
-IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
-   .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
+      IF(            grid1%tobedeleted .OR.        grid2%tobedeleted  &
+         .OR. (.NOT. grid1%activegrid) .OR. (.NOT. grid2%activegrid)) RETURN
 !
 ! Look for periodic overlap of ghost cell regions of grid1 and grid2:
 !
-CALL GetPeriodicOffsets(grid2%level)
+      CALL GetPeriodicOffsets(grid2%level)
 !
 ! Apply +/- poffsets to grid2:
-DO polarity = -1, 1, 2
-  DO offset = 1, nperiodicoffsets
-    grid2offset(1:maxdims) = polarity*poffset(1:maxdims,offset)
-    CALL GhostOverlap(grid1,grid2,grid2offset)
-  END DO
-END DO
+      DO polarity = -1, 1, 2
+         DO offset = 1, nperiodicoffsets
+            grid2offset(1:maxdims) = polarity*poffset(1:maxdims,offset)
+            CALL GhostOverlap(grid1,grid2,grid2offset)
+         END DO
+      END DO
 !
-END FUNCTION TransferPeriodicBC
+   END FUNCTION TransferPeriodicBC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION SetPhysicalBC(info,dummy)
-USE NodeinfoDef
-USE TreeOps, ONLY: err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION SetPhysicalBC(info,dummy)
+      USE NodeinfoDef
+      USE TreeOps, ONLY: err_ok
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-INTEGER:: ipass
+      INTEGER:: ipass
 !
-ipass = dummy%iswitch ! Red-black switch when used:
+      ipass = dummy%iswitch ! Red-black switch when used:
 !
-SetPhysicalBC = err_ok
+      SetPhysicalBC = err_ok
 !
 ! Check for inactive grids awaiting garbage collection
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
-SELECT CASE(ndims)
-  CASE (2)
-    CALL SetPhysicalBC2D(info,ipass)      
-  CASE (3)
-    CALL SetPhysicalBC3D(info,ipass)
-  CASE DEFAULT
-    PRINT *, 'SetPhysicalBC: Only ndims = 2,3 are supported.'
-END SELECT
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      SELECT CASE(ndims)
+       CASE (2)
+         CALL SetPhysicalBC2D(info,ipass)
+       CASE (3)
+         CALL SetPhysicalBC3D(info,ipass)
+       CASE DEFAULT
+         PRINT *, 'SetPhysicalBC: Only ndims = 2,3 are supported.'
+      END SELECT
 !
-END FUNCTION SetPhysicalBC
+   END FUNCTION SetPhysicalBC
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE SetPhysicalBC2D(info,ipass)
-USE NodeinfoDef
-USE Problem, ONLY: UserBC2D
-IMPLICIT NONE
+   SUBROUTINE SetPhysicalBC2D(info,ipass)
+      USE NodeinfoDef
+      USE Problem, ONLY: UserBC2D
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-INTEGER, INTENT(IN):: ipass
+      TYPE(nodeinfo):: info
+      INTEGER, INTENT(IN):: ipass
 
-INTEGER:: ll, level
-INTEGER, DIMENSION(1:2):: cmx, mx, ul
-INTEGER, DIMENSION(1:4):: mthbc
+      INTEGER:: ll, level
+      INTEGER, DIMENSION(1:2):: cmx, mx, ul
+      INTEGER, DIMENSION(1:4):: mthbc
 !
-level = info%level
-ll = 1-mbc
-mx(1:2) = info%mx(1:2)
-cmx(1:2) = mx(1:2)/2
-ul(1:2) = mx(1:2)+mbc
-mthbc(1:4) = info%mthbc(1:4)
+      level = info%level
+      ll = 1-mbc
+      mx(1:2) = info%mx(1:2)
+      cmx(1:2) = mx(1:2)/2
+      ul(1:2) = mx(1:2)+mbc
+      mthbc(1:4) = info%mthbc(1:4)
 !
-1001 FORMAT('SetPhysicalBC2D: User boundary condition ', i4, ' on boundary ', i1, //, &
-            '         not coded in SetPhysicalBC2D.')
+1001  FORMAT('SetPhysicalBC2D: User boundary condition ', i4, ' on boundary ', i1, //, &
+         '         not coded in SetPhysicalBC2D.')
 !
 ! Left Boundary:
-SELECT CASE(mthbc(1))
-  CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,1)
-    IF(.NOT. meshbuildcomplete) info%levellandscape(0,0:cmx(2)+1,1) = level
-  CASE DEFAULT
-    PRINT 1001, mthbc(1), 1
-    STOP
-END SELECT
+      SELECT CASE(mthbc(1))
+       CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,1)
+         IF(.NOT. meshbuildcomplete) info%levellandscape(0,0:cmx(2)+1,1) = level
+       CASE DEFAULT
+         PRINT 1001, mthbc(1), 1
+         STOP
+      END SELECT
 !
 ! Right Boundary:
-SELECT CASE(mthbc(2))
-  CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,2)
-    IF(.NOT. meshbuildcomplete) info%levellandscape(cmx(1)+1,0:cmx(2)+1,1) = level
-  CASE DEFAULT
-    PRINT 1001, mthbc(2), 2
-    STOP
-END SELECT
+      SELECT CASE(mthbc(2))
+       CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,2)
+         IF(.NOT. meshbuildcomplete) info%levellandscape(cmx(1)+1,0:cmx(2)+1,1) = level
+       CASE DEFAULT
+         PRINT 1001, mthbc(2), 2
+         STOP
+      END SELECT
 !
 ! Bottom Boundary:
-SELECT CASE(mthbc(3))
-  CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,3)
-    IF(.NOT. meshbuildcomplete) info%levellandscape(0:cmx(1)+1,0,1) = level
-  CASE DEFAULT
-    PRINT 1001, mthbc(3), 3
-    STOP
-END SELECT
+      SELECT CASE(mthbc(3))
+       CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,3)
+         IF(.NOT. meshbuildcomplete) info%levellandscape(0:cmx(1)+1,0,1) = level
+       CASE DEFAULT
+         PRINT 1001, mthbc(3), 3
+         STOP
+      END SELECT
 !
 ! Top Boundary:
-SELECT CASE(mthbc(4))
-  CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,4)
-    IF(.NOT. meshbuildcomplete) info%levellandscape(0:cmx(1)+1,cmx(2)+1,1) = level
-  CASE DEFAULT
-    PRINT 1001, mthbc(4), 4
-    STOP
-END SELECT
+      SELECT CASE(mthbc(4))
+       CASE(2,999) ! Periodic (2), internal (999) boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC2D(info%q( ll:ul(1)  ,ll:ul(2)  ,1,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1,1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1,1,1:nfcv),ll,mx,4)
+         IF(.NOT. meshbuildcomplete) info%levellandscape(0:cmx(1)+1,cmx(2)+1,1) = level
+       CASE DEFAULT
+         PRINT 1001, mthbc(4), 4
+         STOP
+      END SELECT
 !
-END SUBROUTINE SetPhysicalBC2D
+   END SUBROUTINE SetPhysicalBC2D
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE SetPhysicalBC3D(info,ipass)
-USE NodeinfoDef
-USE Problem, ONLY: UserBC3D
-IMPLICIT NONE
+   SUBROUTINE SetPhysicalBC3D(info,ipass)
+      USE NodeinfoDef
+      USE Problem, ONLY: UserBC3D
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: info
-INTEGER, INTENT(IN):: ipass
+      TYPE(nodeinfo):: info
+      INTEGER, INTENT(IN):: ipass
 
-INTEGER:: ll
-INTEGER, DIMENSION(1:3):: mx, ul
-INTEGER, DIMENSION(1:6):: mthbc
+      INTEGER:: ll
+      INTEGER, DIMENSION(1:3):: mx, ul
+      INTEGER, DIMENSION(1:6):: mthbc
 !
-ll = 1-mbc
-mx(1:3) = info%mx(1:3)
-ul(1:3) = mx(1:3)+mbc
-mthbc(1:6) = info%mthbc(1:6)
+      ll = 1-mbc
+      mx(1:3) = info%mx(1:3)
+      ul(1:3) = mx(1:3)+mbc
+      mthbc(1:6) = info%mthbc(1:6)
 !
-1001 FORMAT('SetPhysicalBC3D: User boundary condition ', i4, ' on boundary ', i1, //, &
-            '         not coded in SetPhysicalBC3D.')
+1001  FORMAT('SetPhysicalBC3D: User boundary condition ', i4, ' on boundary ', i1, //, &
+         '         not coded in SetPhysicalBC3D.')
 !
 ! Left Boundary along dimension 1:
-SELECT CASE(mthbc(1))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,1)
-  CASE DEFAULT
-    PRINT 1001, mthbc(1), 1
-    STOP
-END SELECT
+      SELECT CASE(mthbc(1))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,1)
+       CASE DEFAULT
+         PRINT 1001, mthbc(1), 1
+         STOP
+      END SELECT
 !
 ! Right Boundary along dimension 1:
-SELECT CASE(mthbc(2))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,2)
-  CASE DEFAULT
-    PRINT 1001, mthbc(2), 2
-    STOP
-END SELECT
+      SELECT CASE(mthbc(2))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,2)
+       CASE DEFAULT
+         PRINT 1001, mthbc(2), 2
+         STOP
+      END SELECT
 !
 ! Left Boundary along dimension 2:
-SELECT CASE(mthbc(3))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,3)
-  CASE DEFAULT
-    PRINT 1001, mthbc(3), 3
-    STOP
-END SELECT
+      SELECT CASE(mthbc(3))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,3)
+       CASE DEFAULT
+         PRINT 1001, mthbc(3), 3
+         STOP
+      END SELECT
 !
 ! Right Boundary along dimension 2:
-SELECT CASE(mthbc(4))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,4)
-  CASE DEFAULT
-    PRINT 1001, mthbc(4), 4
-    STOP
-END SELECT
+      SELECT CASE(mthbc(4))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,4)
+       CASE DEFAULT
+         PRINT 1001, mthbc(4), 4
+         STOP
+      END SELECT
 !
 ! Left Boundary along dimension 3:
-SELECT CASE(mthbc(5))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,5)
-  CASE DEFAULT
-    PRINT 1001, mthbc(5), 5
-    STOP
-END SELECT
+      SELECT CASE(mthbc(5))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,5)
+       CASE DEFAULT
+         PRINT 1001, mthbc(5), 5
+         STOP
+      END SELECT
 !
 ! Right Boundary along dimension 3:
-SELECT CASE(mthbc(6))
-  CASE(2,999) ! Periodic, internal boundary condition. Coded below:
-    CONTINUE
-  CASE(10)    ! User boundary condition. Call Problem module:
-    CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
-                  info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
-                  info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,6)
-  CASE DEFAULT
-    PRINT 1001, mthbc(6), 6
-    STOP
-END SELECT
+      SELECT CASE(mthbc(6))
+       CASE(2,999) ! Periodic, internal boundary condition. Coded below:
+         CONTINUE
+       CASE(10)    ! User boundary condition. Call Problem module:
+         CALL UserBC3D(info%q (ll:ul(1)  ,ll:ul(2)  ,ll:ul(3)  ,1:nccv), &
+            info%v1(-1:mx(1)+1, 0:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v2( 0:mx(1)+1,-1:mx(2)+1, 0:mx(3)+1,1:nfcv), &
+            info%v3( 0:mx(1)+1, 0:mx(2)+1,-1:mx(3)+1,1:nfcv),ll,mx,6)
+       CASE DEFAULT
+         PRINT 1001, mthbc(6), 6
+         STOP
+      END SELECT
 !
-END SUBROUTINE SetPhysicalBC3D
+   END SUBROUTINE SetPhysicalBC3D
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE PeriodicSetup(rootinfo)
-USE NodeInfoDef
-USE BSAMStorage, ONLY: AllocPeriodicBCStorage
-IMPLICIT NONE
+   SUBROUTINE PeriodicSetup(rootinfo)
+      USE NodeInfoDef
+      USE BSAMStorage, ONLY: AllocPeriodicBCStorage
+      IMPLICIT NONE
 !
-TYPE(nodeinfo):: rootinfo
+      TYPE(nodeinfo):: rootinfo
 !
-INTEGER:: np
-INTEGER, DIMENSION(1:2*maxdims):: mthbc
+      INTEGER:: np
+      INTEGER, DIMENSION(1:2*maxdims):: mthbc
 !
-mthbc = 10; mthbc(1:2*ndims) = rootinfo%mthbc(1:2*ndims)
-rootinfo%mthbc = mthbc
+      mthbc = 10; mthbc(1:2*ndims) = rootinfo%mthbc(1:2*ndims)
+      rootinfo%mthbc = mthbc
 !
-periodicboundaryconditions = .TRUE.
+      periodicboundaryconditions = .TRUE.
 !
-IF(mthbc(1)==2) THEN
-  IF(mthbc(3)==2) THEN
-    IF(mthbc(5)==2) THEN
-      nperiodicoffsets = 13
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/1,2,3,4,5,6,7,8,9,10,11,12,13/)
-    ELSE
-      nperiodicoffsets = 4
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/1,2,4,5/)
-    END IF
-  ELSE
-    IF(mthbc(5)==2) THEN
-      nperiodicoffsets = 4
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/1,3,8,9/)
-    ELSE
-      nperiodicoffsets = 1
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/1/)
-    END IF
-  END IF
-ELSE
-  IF(mthbc(3)==2) THEN
-    IF(mthbc(5)==2) THEN
-      nperiodicoffsets = 4
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/2,3,6,7/)
-    ELSE
-      nperiodicoffsets = 1
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/2/)
-    END IF
-  ELSE
-    IF(mthbc(5)==2) THEN
-      nperiodicoffsets = 1
-      np = nperiodicoffsets
-      CALL AllocPeriodicBCStorage(np)
-      periodicoffsetindex(1:np) = (/3/)
-    ELSE
-      periodicboundaryconditions = .FALSE.
-    END IF
-  END IF
-END IF
+      IF(mthbc(1)==2) THEN
+         IF(mthbc(3)==2) THEN
+            IF(mthbc(5)==2) THEN
+               nperiodicoffsets = 13
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/1,2,3,4,5,6,7,8,9,10,11,12,13/)
+            ELSE
+               nperiodicoffsets = 4
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/1,2,4,5/)
+            END IF
+         ELSE
+            IF(mthbc(5)==2) THEN
+               nperiodicoffsets = 4
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/1,3,8,9/)
+            ELSE
+               nperiodicoffsets = 1
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/1/)
+            END IF
+         END IF
+      ELSE
+         IF(mthbc(3)==2) THEN
+            IF(mthbc(5)==2) THEN
+               nperiodicoffsets = 4
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/2,3,6,7/)
+            ELSE
+               nperiodicoffsets = 1
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/2/)
+            END IF
+         ELSE
+            IF(mthbc(5)==2) THEN
+               nperiodicoffsets = 1
+               np = nperiodicoffsets
+               CALL AllocPeriodicBCStorage(np)
+               periodicoffsetindex(1:np) = (/3/)
+            ELSE
+               periodicboundaryconditions = .FALSE.
+            END IF
+         END IF
+      END IF
 !
-END SUBROUTINE PeriodicSetup
+   END SUBROUTINE PeriodicSetup
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE GetPeriodicOffsets(level)
-USE NodeInfoDef
-IMPLICIT NONE
+   SUBROUTINE GetPeriodicOffsets(level)
+      USE NodeInfoDef
+      IMPLICIT NONE
 !
-INTEGER, INTENT(IN):: level
+      INTEGER, INTENT(IN):: level
 !
-INTEGER:: offset
+      INTEGER:: offset
 !
-DO offset = 1, nperiodicoffsets
-  SELECT CASE(periodicoffsetindex(offset))
-  CASE(1)
-    poffset(1,offset) =  mxmax(level,1)
-    poffset(2,offset) =  0
-    poffset(3,offset) =  0
-  CASE(2)
-    poffset(1,offset) =  0
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) =  0
-  CASE(3)
-    poffset(1,offset) =  0
-    poffset(2,offset) =  0
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(4)
-    poffset(1,offset) =  mxmax(level,1) 
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) =  0
-  CASE(5)
-    poffset(1,offset) = -mxmax(level,1) 
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) =  0
-  CASE(6)
-    poffset(1,offset) =  0
-    poffset(2,offset) =  mxmax(level,2) 
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(7)
-    poffset(1,offset) =  0
-    poffset(2,offset) =  mxmax(level,2) 
-    poffset(3,offset) = -mxmax(level,3)
-  CASE(8)
-    poffset(1,offset) =  mxmax(level,1)
-    poffset(2,offset) =  0
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(9)
-    poffset(1,offset) = -mxmax(level,1) 
-    poffset(2,offset) =  0
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(10)
-    poffset(1,offset) =  mxmax(level,1) 
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(11)
-    poffset(1,offset) =  mxmax(level,1) 
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) = -mxmax(level,3)
-  CASE(12)
-    poffset(1,offset) = -mxmax(level,1) 
-    poffset(2,offset) =  mxmax(level,2)
-    poffset(3,offset) =  mxmax(level,3)
-  CASE(13)
-    poffset(1,offset) =  mxmax(level,1) 
-    poffset(2,offset) = -mxmax(level,2)
-    poffset(3,offset) =  mxmax(level,3)
-  END SELECT
-END DO
+      DO offset = 1, nperiodicoffsets
+         SELECT CASE(periodicoffsetindex(offset))
+          CASE(1)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) =  0
+            poffset(3,offset) =  0
+          CASE(2)
+            poffset(1,offset) =  0
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  0
+          CASE(3)
+            poffset(1,offset) =  0
+            poffset(2,offset) =  0
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(4)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  0
+          CASE(5)
+            poffset(1,offset) = -mxmax(level,1)
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  0
+          CASE(6)
+            poffset(1,offset) =  0
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(7)
+            poffset(1,offset) =  0
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) = -mxmax(level,3)
+          CASE(8)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) =  0
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(9)
+            poffset(1,offset) = -mxmax(level,1)
+            poffset(2,offset) =  0
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(10)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(11)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) = -mxmax(level,3)
+          CASE(12)
+            poffset(1,offset) = -mxmax(level,1)
+            poffset(2,offset) =  mxmax(level,2)
+            poffset(3,offset) =  mxmax(level,3)
+          CASE(13)
+            poffset(1,offset) =  mxmax(level,1)
+            poffset(2,offset) = -mxmax(level,2)
+            poffset(3,offset) =  mxmax(level,3)
+         END SELECT
+      END DO
 !
-END SUBROUTINE GetPeriodicOffsets
+   END SUBROUTINE GetPeriodicOffsets
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-INTEGER FUNCTION GetCoarseGhostPoints(info,dummy)
-USE NodeInfoDef
-USE TreeOps, ONLY: GetParentInfo, err_ok
-IMPLICIT NONE
+   INTEGER FUNCTION GetCoarseGhostPoints(info,dummy)
+      USE NodeInfoDef
+      USE TreeOps, ONLY: GetParentInfo, err_ok
+      IMPLICIT NONE
 !
 ! Dimensionally invariant routine to fill coarse grid ghost points.
 !
-TYPE(nodeinfo):: info
-TYPE(funcparam):: dummy
+      TYPE(nodeinfo):: info
+      TYPE(funcparam):: dummy
 !
-TYPE(nodeinfo), POINTER:: parent
-INTEGER:: ierror
-INTEGER, DIMENSION(1:maxdims):: cmx, ih, il, jh, jl, mx
-INTEGER, DIMENSION(1:maxdims,1:2):: mb
+      TYPE(nodeinfo), POINTER:: parent
+      INTEGER:: ierror
+      INTEGER, DIMENSION(1:maxdims):: cmx, ih, il, jh, jl, mx
+      INTEGER, DIMENSION(1:maxdims,1:2):: mb
 !
-GetCoarseGhostPoints = err_ok
+      GetCoarseGhostPoints = err_ok
 !
-IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
+      IF(info%tobedeleted .OR. (.NOT. info%activegrid)) RETURN
 !
- mx = 1;     mx(1:ndims) = info%mx(1:ndims)
-cmx = 1;    cmx(1:ndims) = mx(1:ndims)/2
- il = 1;     il(1:ndims) = 0;
- ih = 1;     ih(1:ndims) = cmx(1:ndims)+1
- mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
- jl = 1;     jl(1:ndims) = mb(1:ndims,1)-1;
- jh = 1;     jh(1:ndims) = mb(1:ndims,2)+1
+      mx = 1;     mx(1:ndims) = info%mx(1:ndims)
+      cmx = 1;    cmx(1:ndims) = mx(1:ndims)/2
+      il = 1;     il(1:ndims) = 0;
+      ih = 1;     ih(1:ndims) = cmx(1:ndims)+1
+      mb = 1; mb(1:ndims,1:2) = info%mbounds(1:ndims,1:2)
+      jl = 1;     jl(1:ndims) = mb(1:ndims,1)-1;
+      jh = 1;     jh(1:ndims) = mb(1:ndims,2)+1
 !
-ierror = GetParentInfo(parent)
+      ierror = GetParentInfo(parent)
 !
 ! Face #1: qc(0,0:cmx+1,0:cm+1)
       info%qc(il(1),il(2):ih(2),il(3):ih(3),1:nccv) &
-  = parent%q( jl(1),jl(2):jh(2),jl(3):jh(3),1:nccv)
+         = parent%q( jl(1),jl(2):jh(2),jl(3):jh(3),1:nccv)
 !
-! Copy 2 layers on face 1 for v1: 
+! Copy 2 layers on face 1 for v1:
       info%v1c(il(1)-1:il(1),il(2)  :ih(2),il(3):ih(3),1:nfcv) &
-  = parent%v1( jl(1)-1:jl(1),jl(2)  :jh(2),jl(3):jh(3),1:nfcv)
+         = parent%v1( jl(1)-1:jl(1),jl(2)  :jh(2),jl(3):jh(3),1:nfcv)
 !
-! Copy 1 layer on face 1 for v2: 
+! Copy 1 layer on face 1 for v2:
       info%v2c(il(1)        ,il(2)-1:ih(2),il(3):ih(3),1:nfcv) &
-  = parent%v2( jl(1)        ,jl(2)-1:jh(2),jl(3):jh(3),1:nfcv)
+         = parent%v2( jl(1)        ,jl(2)-1:jh(2),jl(3):jh(3),1:nfcv)
 !
 ! Face #2:
       info%qc(ih(1),il(2):ih(2),il(3):ih(3),1:nccv) &
-  = parent%q( jh(1),jl(2):jh(2),jl(3):jh(3),1:nccv)
+         = parent%q( jh(1),jl(2):jh(2),jl(3):jh(3),1:nccv)
 !
-! Copy 2 layers on face 2 for v1: 
+! Copy 2 layers on face 2 for v1:
       info%v1c(ih(1)-1:ih(1),il(2)  :ih(2),il(3):ih(3),1:nfcv) &
-  = parent%v1( jh(1)-1:jh(1),jl(2)  :jh(2),jl(3):jh(3),1:nfcv)
+         = parent%v1( jh(1)-1:jh(1),jl(2)  :jh(2),jl(3):jh(3),1:nfcv)
 !
-! Copy 1 layers on face 2 for v2: 
+! Copy 1 layers on face 2 for v2:
       info%v2c(ih(1)        ,il(2)-1:ih(2),il(3):ih(3),1:nfcv) &
-  = parent%v2( jh(1)        ,jl(2)-1:jh(2),jl(3):jh(3),1:nfcv)
+         = parent%v2( jh(1)        ,jl(2)-1:jh(2),jl(3):jh(3),1:nfcv)
 !
-IF(ndims>=2) THEN
+      IF(ndims>=2) THEN
 !
 ! Face #3:
-        info%qc(     1:cmx(1)  ,il(2),il(3):ih(3),1:nccv) &
-    = parent%q(mb(1,1): mb(1,2),jl(2),jl(3):jh(3),1:nccv)
+         info%qc(     1:cmx(1)  ,il(2),il(3):ih(3),1:nccv) &
+            = parent%q(mb(1,1): mb(1,2),jl(2),jl(3):jh(3),1:nccv)
 !
-        info%v1c(       0:cmx(1)  ,il(2)        ,il(3):ih(3),1:nfcv) &
-    = parent%v1(mb(1,1)-1: mb(1,2),jl(2)        ,jl(3):jh(3),1:nfcv)
+         info%v1c(       0:cmx(1)  ,il(2)        ,il(3):ih(3),1:nfcv) &
+            = parent%v1(mb(1,1)-1: mb(1,2),jl(2)        ,jl(3):jh(3),1:nfcv)
 !
-        info%v2c(       1:cmx(1)  ,il(2)-1:il(2),il(3):ih(3),1:nfcv) &
-    = parent%v2(mb(1,1)  : mb(1,2),jl(2)-1:jl(2),jl(3):jh(3),1:nfcv)
+         info%v2c(       1:cmx(1)  ,il(2)-1:il(2),il(3):ih(3),1:nfcv) &
+            = parent%v2(mb(1,1)  : mb(1,2),jl(2)-1:jl(2),jl(3):jh(3),1:nfcv)
 !
 ! Face #4:
-        info%qc(     1:cmx(1)  ,ih(2),il(3):ih(3),1:nccv) &
-    = parent%q(mb(1,1): mb(1,2),jh(2),jl(3):jh(3),1:nccv)
+         info%qc(     1:cmx(1)  ,ih(2),il(3):ih(3),1:nccv) &
+            = parent%q(mb(1,1): mb(1,2),jh(2),jl(3):jh(3),1:nccv)
 !
-        info%v1c(       0:cmx(1)  ,ih(2)        ,il(3):ih(3),1:nfcv) &
-    = parent%v1(mb(1,1)-1: mb(1,2),jh(2)        ,jl(3):jh(3),1:nfcv)
+         info%v1c(       0:cmx(1)  ,ih(2)        ,il(3):ih(3),1:nfcv) &
+            = parent%v1(mb(1,1)-1: mb(1,2),jh(2)        ,jl(3):jh(3),1:nfcv)
 !
-        info%v2c(       1:cmx(1)  ,ih(2)-1:ih(2),il(3):ih(3),1:nfcv) &
-    = parent%v2(mb(1,1)  : mb(1,2),jh(2)-1:jh(2),jl(3):jh(3),1:nfcv)
-!  
+         info%v2c(       1:cmx(1)  ,ih(2)-1:ih(2),il(3):ih(3),1:nfcv) &
+            = parent%v2(mb(1,1)  : mb(1,2),jh(2)-1:jh(2),jl(3):jh(3),1:nfcv)
+!
 
-END IF
-  IF(ndims>=3) THEN
+      END IF
+      IF(ndims>=3) THEN
 ! Face #1: qc(0,0:cmx+1,0:cm+1)
 !
-! Copy 1 layer on face 1 for v3: 
-          info%v3c(il(1)        ,il(2):ih(2),il(3)-1:ih(3),1:nfcv) &
-      = parent%v3 (jl(1)        ,jl(2):jh(2),jl(3)-1:jh(3),1:nfcv)
+! Copy 1 layer on face 1 for v3:
+         info%v3c(il(1)        ,il(2):ih(2),il(3)-1:ih(3),1:nfcv) &
+            = parent%v3 (jl(1)        ,jl(2):jh(2),jl(3)-1:jh(3),1:nfcv)
 !
 ! Face #2:
 !
-! Copy 1 layers on face 2 for v3: 
-          info%v3c(ih(1)        ,il(2):ih(2),il(3)-1:ih(3),1:nfcv) &
-      = parent%v3 (jh(1)        ,jl(2):jh(2),jl(3)-1:jh(3),1:nfcv)
+! Copy 1 layers on face 2 for v3:
+         info%v3c(ih(1)        ,il(2):ih(2),il(3)-1:ih(3),1:nfcv) &
+            = parent%v3 (jh(1)        ,jl(2):jh(2),jl(3)-1:jh(3),1:nfcv)
 !
 ! Face #3:
 !
-          info%v3c(       1:cmx(1)  ,il(2),il(3)-1:ih(3),1:nfcv) &
-      = parent%v3 (mb(1,1) : mb(1,2),jl(2),jl(3)-1:jh(3),1:nfcv)
+         info%v3c(       1:cmx(1)  ,il(2),il(3)-1:ih(3),1:nfcv) &
+            = parent%v3 (mb(1,1) : mb(1,2),jl(2),jl(3)-1:jh(3),1:nfcv)
 !
 ! Face #4:
 !
-          info%v3c(       1:cmx(1)  ,ih(2),il(3)-1:ih(3),1:nfcv) &
-      = parent%v3 (mb(1,1) : mb(1,2),jh(2),jl(3)-1:jh(3),1:nfcv)
-!  
+         info%v3c(       1:cmx(1)  ,ih(2),il(3)-1:ih(3),1:nfcv) &
+            = parent%v3 (mb(1,1) : mb(1,2),jh(2),jl(3)-1:jh(3),1:nfcv)
+!
 !
 ! Face #5:
-          info%qc (      1:cmx(1) ,       1:cmx(2)  ,il(3),1:nccv) &
-      = parent%q  (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nccv)
+         info%qc (      1:cmx(1) ,       1:cmx(2)  ,il(3),1:nccv) &
+            = parent%q  (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nccv)
 !
-          info%v1c(      1:cmx(1) ,       1:cmx(2)  ,il(3),1:nfcv) &
-      = parent%v1 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nfcv)
+         info%v1c(      1:cmx(1) ,       1:cmx(2)  ,il(3),1:nfcv) &
+            = parent%v1 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nfcv)
 !
-          info%v2c(      1:cmx(1)  ,      1:cmx(2)  ,il(3),1:nfcv) &
-      = parent%v2 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nfcv)
+         info%v2c(      1:cmx(1)  ,      1:cmx(2)  ,il(3),1:nfcv) &
+            = parent%v2 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3),1:nfcv)
 !
-          info%v3c(      1:cmx(1)  ,      1:cmx(2)  ,il(3)-1:il(3),1:nfcv) &
-      = parent%v3 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3)-1:jl(3),1:nfcv)
+         info%v3c(      1:cmx(1)  ,      1:cmx(2)  ,il(3)-1:il(3),1:nfcv) &
+            = parent%v3 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jl(3)-1:jl(3),1:nfcv)
 !
 ! Face #6:
-          info%qc(       1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nccv) &
-      = parent%q ( mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nccv)
+         info%qc(       1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nccv) &
+            = parent%q ( mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nccv)
 !
-          info%v1c(      1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nfcv) &
-      = parent%v1 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nfcv)
+         info%v1c(      1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nfcv) &
+            = parent%v1 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nfcv)
 !
-          info%v2c(      1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nfcv) &
-      = parent%v2 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nfcv)
+         info%v2c(      1:cmx(1)  ,      1:cmx(2)  ,ih(3),1:nfcv) &
+            = parent%v2 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3),1:nfcv)
 !
          info%v3c(       1:cmx(1)  ,      1:cmx(2)  ,ih(3)-1:ih(3),1:nfcv) &
-      = parent%v3 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3)-1:jh(3),1:nfcv)
+            = parent%v3 (mb(1,1): mb(1,2),mb(2,1): mb(2,2),jh(3)-1:jh(3),1:nfcv)
 !
-  END IF
+      END IF
 
 !
-END FUNCTION GetCoarseGhostPoints
+   END FUNCTION GetCoarseGhostPoints
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE GetFaceIndex(mx,mb,dim,parity,fi)
-IMPLICIT NONE
+   SUBROUTINE GetFaceIndex(mx,mb,dim,parity,fi)
+      IMPLICIT NONE
 !
-INTEGER, DIMENSION(1:3), INTENT(IN)::mx
-INTEGER, DIMENSION(1:3,1:2), INTENT(IN)::mb
-INTEGER, INTENT(IN):: dim
-INTEGER, INTENT(IN):: parity
-INTEGER, DIMENSION(1:5), INTENT(OUT):: fi
+      INTEGER, DIMENSION(1:3), INTENT(IN)::mx
+      INTEGER, DIMENSION(1:3,1:2), INTENT(IN)::mb
+      INTEGER, INTENT(IN):: dim
+      INTEGER, INTENT(IN):: parity
+      INTEGER, DIMENSION(1:5), INTENT(OUT):: fi
 !
-SELECT CASE(parity)
-  CASE(1)
-    fi(1) = 0
-    fi(2) = 2
-    fi(3) = 1
-    fi(4) = mb(dim,parity)-1
-    fi(5) = mb(dim,parity)
-  CASE(2)
-    fi(1) = mx(dim)+1
-    fi(2) = mx(dim)-1
-    fi(3) = mx(dim)
-    fi(4) = mb(dim,parity)+1
-    fi(5) = mb(dim,parity)
-  CASE DEFAULT
-    PRINT *, 'GetFaceIndex: Parity error'
-    STOP
-END SELECT
+      SELECT CASE(parity)
+       CASE(1)
+         fi(1) = 0
+         fi(2) = 2
+         fi(3) = 1
+         fi(4) = mb(dim,parity)-1
+         fi(5) = mb(dim,parity)
+       CASE(2)
+         fi(1) = mx(dim)+1
+         fi(2) = mx(dim)-1
+         fi(3) = mx(dim)
+         fi(4) = mb(dim,parity)+1
+         fi(5) = mb(dim,parity)
+       CASE DEFAULT
+         PRINT *, 'GetFaceIndex: Parity error'
+         STOP
+      END SELECT
 !
-END SUBROUTINE GetFaceIndex
+   END SUBROUTINE GetFaceIndex
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-SUBROUTINE Interpolate3D(qf,qc,mx,mb,mthbc,ipass)
-USE NodeInfoDef, ONLY: r8, nccv
-IMPLICIT NONE
+   SUBROUTINE Interpolate3D(qf,qc,mx,mb,mthbc,ipass)
+      USE NodeInfoDef, ONLY: r8, nccv
+      IMPLICIT NONE
 !
-REAL(KIND=r8), DIMENSION(0:,0:,0:,1:), INTENT(IN OUT):: qf
-REAL(KIND=r8), DIMENSION(0:,0:,0:,1:), INTENT(IN):: qc
-INTEGER, DIMENSION(1:3), INTENT(IN):: mx
-INTEGER, DIMENSION(1:3,1:2), INTENT(IN):: mb
-INTEGER, DIMENSION(1:6), INTENT(IN):: mthbc
-INTEGER, INTENT(IN):: ipass
+      REAL(KIND=r8), DIMENSION(0:,0:,0:,1:), INTENT(IN OUT):: qf
+      REAL(KIND=r8), DIMENSION(0:,0:,0:,1:), INTENT(IN):: qc
+      INTEGER, DIMENSION(1:3), INTENT(IN):: mx
+      INTEGER, DIMENSION(1:3,1:2), INTENT(IN):: mb
+      INTEGER, DIMENSION(1:6), INTENT(IN):: mthbc
+      INTEGER, INTENT(IN):: ipass
 !
-LOGICAL, DIMENSION(1:6):: cycle_face
-INTEGER:: fc, parity_1, parity_2, parity_3
-INTEGER, DIMENSION(1:3,1:5):: fi
+      LOGICAL, DIMENSION(1:6):: cycle_face
+      INTEGER:: fc, parity_1, parity_2, parity_3
+      INTEGER, DIMENSION(1:3,1:5):: fi
 !
 ! ipass = 1: red (or odd-odd and even-even) squares should be updated,
 ! ipass = 2: black (or even-odd and odd-even) squares should be updated.
 ! ipass = 0: both red and black squares should be updated.
 !
-! Faces that are on physical boundaries have mthbc(face) equal to a number 
+! Faces that are on physical boundaries have mthbc(face) equal to a number
 ! other than 2 and 999. If the face is on a physical boundary its ghost points
-! aren't found by interpolation. 
+! aren't found by interpolation.
 ! interpol
 !
 ! (1) Interpolate the 8 corners of each box.  We only interpolate on the
 !     physical boundaries if ipass = 0, 2:
-parity_1c_loop: DO parity_1 = 1, 2
-  IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/=999 .AND. ipass==1) &
-    CYCLE parity_1c_loop
-  CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
-  parity_2c_loop: DO parity_2 = 1, 2
-    IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
-      CYCLE parity_2c_loop
-    CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
-    parity_3c_loop: DO parity_3 = 1, 2
-      IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=999 .AND. ipass==1) &
-        CYCLE parity_3c_loop
-      CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
-           qf(fi(1,1),fi(2,1),fi(3,1),1:nccv) = &
-        a1*qf(fi(1,2),fi(2,2),fi(3,2),1:nccv) &
-      + a2*qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
-      + a3*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv)
-    END DO parity_3c_loop
-  END DO parity_2c_loop
-END DO parity_1c_loop
+      parity_1c_loop: DO parity_1 = 1, 2
+         IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/=999 .AND. ipass==1) &
+            CYCLE parity_1c_loop
+         CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+         parity_2c_loop: DO parity_2 = 1, 2
+            IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
+               CYCLE parity_2c_loop
+            CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+            parity_3c_loop: DO parity_3 = 1, 2
+               IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=999 .AND. ipass==1) &
+                  CYCLE parity_3c_loop
+               CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+               qf(fi(1,1),fi(2,1),fi(3,1),1:nccv) = &
+                  a1*qf(fi(1,2),fi(2,2),fi(3,2),1:nccv) &
+                  + a2*qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
+                  + a3*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv)
+            END DO parity_3c_loop
+         END DO parity_2c_loop
+      END DO parity_1c_loop
 !
 ! (2) Interpolate the 12 edges of each box.  We only interpolate on the
 !     physical boundaries if ipass = 0, 2:
 !
 ! Edges 1--4 (coordinates 1 and 3 fixed):
-parity_1e1_loop: DO parity_1 = 1, 2
-  IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/=999 .AND. ipass==1) &
-    CYCLE parity_1e1_loop
-  CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
-  parity_3e1_loop: DO parity_3 = 1, 2
-    IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=99 .AND. ipass==1) &
-      CYCLE parity_3e1_loop
-    CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+      parity_1e1_loop: DO parity_1 = 1, 2
+         IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/=999 .AND. ipass==1) &
+            CYCLE parity_1e1_loop
+         CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+         parity_3e1_loop: DO parity_3 = 1, 2
+            IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=99 .AND. ipass==1) &
+               CYCLE parity_3e1_loop
+            CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
 !
-         qf(fi(1,1),      3:mx(2)-1:2,fi(3,1),1:nccv) = &
-      a1*qf(fi(1,2),      1:mx(2)-3:2,fi(3,2),1:nccv) &
-    + a2*qf(fi(1,3),      2:mx(2)-2:2,fi(3,3),1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
+            qf(fi(1,1),      3:mx(2)-1:2,fi(3,1),1:nccv) = &
+               a1*qf(fi(1,2),      1:mx(2)-3:2,fi(3,2),1:nccv) &
+               + a2*qf(fi(1,3),      2:mx(2)-2:2,fi(3,3),1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
 !
-             qf(fi(1,1),        1,fi(3,1),1:nccv) = &
-      a1*    qf(fi(1,2),        1,fi(3,2),1:nccv) &
-    + a2*    qf(fi(1,3),        1,fi(3,3),1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1)-1,fi(3,4),1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1)  ,fi(3,4),1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1)+1,fi(3,4),1:nccv))
+            qf(fi(1,1),        1,fi(3,1),1:nccv) = &
+               a1*    qf(fi(1,2),        1,fi(3,2),1:nccv) &
+               + a2*    qf(fi(1,3),        1,fi(3,3),1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1)-1,fi(3,4),1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1)  ,fi(3,4),1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1)+1,fi(3,4),1:nccv))
 !
-         qf(fi(1,1),      2:mx(2)-2:2,fi(3,1),1:nccv) = &
-      a1*qf(fi(1,2),      4:mx(2)  :2,fi(3,2),1:nccv) &
-    + a2*qf(fi(1,3),      3:mx(2)-1:2,fi(3,3),1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
+            qf(fi(1,1),      2:mx(2)-2:2,fi(3,1),1:nccv) = &
+               a1*qf(fi(1,2),      4:mx(2)  :2,fi(3,2),1:nccv) &
+               + a2*qf(fi(1,3),      3:mx(2)-1:2,fi(3,3),1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
 !
-             qf(fi(1,1),    mx(2),fi(3,1),1:nccv) = &
-      a1*    qf(fi(1,2),    mx(2),fi(3,2),1:nccv) &
-    + a2*    qf(fi(1,3),    mx(2),fi(3,3),1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,2)+1,fi(3,4),1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,2)  ,fi(3,4),1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,2)-1,fi(3,4),1:nccv))
+            qf(fi(1,1),    mx(2),fi(3,1),1:nccv) = &
+               a1*    qf(fi(1,2),    mx(2),fi(3,2),1:nccv) &
+               + a2*    qf(fi(1,3),    mx(2),fi(3,3),1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,2)+1,fi(3,4),1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,2)  ,fi(3,4),1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,2)-1,fi(3,4),1:nccv))
 !
-  END DO parity_3e1_loop
-END DO parity_1e1_loop
+         END DO parity_3e1_loop
+      END DO parity_1e1_loop
 !
 ! Edges 5--8 (coordinates 1 and 2 fixed):
-parity_1e2_loop: DO parity_1 = 1, 2
-  IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/= 999 .AND. ipass==1) &
-    CYCLE parity_1e2_loop
-  CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
-  parity_2e2_loop: DO parity_2 = 1, 2
-    IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
-      CYCLE parity_2e2_loop
-    CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+      parity_1e2_loop: DO parity_1 = 1, 2
+         IF(mthbc(parity_1)/=2 .AND. mthbc(parity_1)/= 999 .AND. ipass==1) &
+            CYCLE parity_1e2_loop
+         CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+         parity_2e2_loop: DO parity_2 = 1, 2
+            IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
+               CYCLE parity_2e2_loop
+            CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
 !
-         qf(fi(1,1),fi(2,1),      3:mx(3)-1:2,1:nccv) = &
-      a1*qf(fi(1,2),fi(2,2),      1:mx(3)-3:2,1:nccv) &
-    + a2*qf(fi(1,3),fi(2,3),      2:mx(3)-2:2,1:nccv) &
-    + a3*qc(fi(1,4),fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
+            qf(fi(1,1),fi(2,1),      3:mx(3)-1:2,1:nccv) = &
+               a1*qf(fi(1,2),fi(2,2),      1:mx(3)-3:2,1:nccv) &
+               + a2*qf(fi(1,3),fi(2,3),      2:mx(3)-2:2,1:nccv) &
+               + a3*qc(fi(1,4),fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
 !
-             qf(fi(1,1),fi(2,1),        1,1:nccv) = &
-      a1*    qf(fi(1,2),fi(2,2),        1,1:nccv) &
-    + a2*    qf(fi(1,3),fi(2,3),        1,1:nccv) &
-    + a3*(b1*qc(fi(1,4),fi(2,4),mb(3,1)-1,1:nccv) &
-    +     b2*qc(fi(1,4),fi(2,4),mb(3,1)  ,1:nccv) &
-    +     b3*qc(fi(1,4),fi(2,4),mb(3,1)+1,1:nccv))
+            qf(fi(1,1),fi(2,1),        1,1:nccv) = &
+               a1*    qf(fi(1,2),fi(2,2),        1,1:nccv) &
+               + a2*    qf(fi(1,3),fi(2,3),        1,1:nccv) &
+               + a3*(b1*qc(fi(1,4),fi(2,4),mb(3,1)-1,1:nccv) &
+               +     b2*qc(fi(1,4),fi(2,4),mb(3,1)  ,1:nccv) &
+               +     b3*qc(fi(1,4),fi(2,4),mb(3,1)+1,1:nccv))
 !
-         qf(fi(1,1),fi(2,1),      2:mx(3)-2:2,1:nccv) = &
-      a1*qf(fi(1,2),fi(2,2),      4:mx(3)  :2,1:nccv) &
-    + a2*qf(fi(1,3),fi(2,3),      3:mx(3)-1:2,1:nccv) &
-    + a3*qc(fi(1,4),fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
+            qf(fi(1,1),fi(2,1),      2:mx(3)-2:2,1:nccv) = &
+               a1*qf(fi(1,2),fi(2,2),      4:mx(3)  :2,1:nccv) &
+               + a2*qf(fi(1,3),fi(2,3),      3:mx(3)-1:2,1:nccv) &
+               + a3*qc(fi(1,4),fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
 !
-             qf(fi(1,1),fi(2,1),    mx(3),1:nccv) = &
-      a1*    qf(fi(1,2),fi(2,2),    mx(3),1:nccv) &
-    + a2*    qf(fi(1,3),fi(2,3),    mx(3),1:nccv) &
-    + a3*(b1*qc(fi(1,4),fi(2,4),mb(3,2)+1,1:nccv) &
-    +     b2*qc(fi(1,4),fi(2,4),mb(3,2)  ,1:nccv) &
-    +     b3*qc(fi(1,4),fi(2,4),mb(3,2)-1,1:nccv))
+            qf(fi(1,1),fi(2,1),    mx(3),1:nccv) = &
+               a1*    qf(fi(1,2),fi(2,2),    mx(3),1:nccv) &
+               + a2*    qf(fi(1,3),fi(2,3),    mx(3),1:nccv) &
+               + a3*(b1*qc(fi(1,4),fi(2,4),mb(3,2)+1,1:nccv) &
+               +     b2*qc(fi(1,4),fi(2,4),mb(3,2)  ,1:nccv) &
+               +     b3*qc(fi(1,4),fi(2,4),mb(3,2)-1,1:nccv))
 !
-  END DO parity_2e2_loop
-END DO parity_1e2_loop
+         END DO parity_2e2_loop
+      END DO parity_1e2_loop
 !
 ! Edges 9--12 (coordinates 2 and 3 fixed):
-parity_2e3_loop: DO parity_2 = 1, 2
-  IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
-    CYCLE parity_2e3_loop
-  CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
-  parity_3e3_loop: DO parity_3 = 1, 2
-    IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=999 .AND. ipass==1) &
-      CYCLE parity_3e3_loop
-    CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+      parity_2e3_loop: DO parity_2 = 1, 2
+         IF(mthbc(parity_2+2)/=2 .AND. mthbc(parity_2+2)/=999 .AND. ipass==1) &
+            CYCLE parity_2e3_loop
+         CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+         parity_3e3_loop: DO parity_3 = 1, 2
+            IF(mthbc(parity_3+4)/=2 .AND. mthbc(parity_3+4)/=999 .AND. ipass==1) &
+               CYCLE parity_3e3_loop
+            CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
 !
-         qf(      3:mx(1)-1:2,fi(2,1),fi(3,1),1:nccv) = &
-      a1*qf(      1:mx(1)-3:2,fi(2,2),fi(3,2),1:nccv) &
-    + a2*qf(      2:mx(1)-2:2,fi(2,3),fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),fi(3,4),1:nccv)
+            qf(      3:mx(1)-1:2,fi(2,1),fi(3,1),1:nccv) = &
+               a1*qf(      1:mx(1)-3:2,fi(2,2),fi(3,2),1:nccv) &
+               + a2*qf(      2:mx(1)-2:2,fi(2,3),fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),fi(3,4),1:nccv)
 !
-             qf(        1,fi(2,1),fi(3,1),1:nccv) = &
-      a1*    qf(        1,fi(2,2),fi(3,2),1:nccv) &
-    + a2*    qf(        1,fi(2,3),fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)-1,fi(2,4),fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1)  ,fi(2,4),fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1)+1,fi(2,4),fi(3,4),1:nccv))
+            qf(        1,fi(2,1),fi(3,1),1:nccv) = &
+               a1*    qf(        1,fi(2,2),fi(3,2),1:nccv) &
+               + a2*    qf(        1,fi(2,3),fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,fi(2,4),fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1)  ,fi(2,4),fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1)+1,fi(2,4),fi(3,4),1:nccv))
 !
-         qf(      2:mx(1)-2:2,fi(2,1),fi(3,1),1:nccv) = &
-      a1*qf(      4:mx(1)  :2,fi(2,2),fi(3,2),1:nccv) &
-    + a2*qf(      3:mx(1)-1:2,fi(2,3),fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),fi(3,4),1:nccv)
+            qf(      2:mx(1)-2:2,fi(2,1),fi(3,1),1:nccv) = &
+               a1*qf(      4:mx(1)  :2,fi(2,2),fi(3,2),1:nccv) &
+               + a2*qf(      3:mx(1)-1:2,fi(2,3),fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),fi(3,4),1:nccv)
 !
-             qf(    mx(1),fi(2,1),fi(3,1),1:nccv) = &
-      a1*    qf(    mx(1),fi(2,2),fi(3,2),1:nccv) &
-    + a2*    qf(    mx(1),fi(2,3),fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,2)+1,fi(2,4),fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,2)  ,fi(2,4),fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,2)-1,fi(2,4),fi(3,4),1:nccv))
+            qf(    mx(1),fi(2,1),fi(3,1),1:nccv) = &
+               a1*    qf(    mx(1),fi(2,2),fi(3,2),1:nccv) &
+               + a2*    qf(    mx(1),fi(2,3),fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,fi(2,4),fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,2)  ,fi(2,4),fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,2)-1,fi(2,4),fi(3,4),1:nccv))
 !
-  END DO parity_3e3_loop
-END DO parity_2e3_loop
+         END DO parity_3e3_loop
+      END DO parity_2e3_loop
 !
 ! (3) Interpolate the 6 faces:
 !
 ! Only interpolate periodic or internal interfaces:
-DO fc = 1, 6
-  SELECT CASE(mthbc(fc))
-  CASE(2,999)
-    cycle_face(fc) = .FALSE.
-  CASE DEFAULT
-    cycle_face(fc) = .TRUE.
-  END SELECT
-END DO
+      DO fc = 1, 6
+         SELECT CASE(mthbc(fc))
+          CASE(2,999)
+            cycle_face(fc) = .FALSE.
+          CASE DEFAULT
+            cycle_face(fc) = .TRUE.
+         END SELECT
+      END DO
 !
 ! ipass = 0: Red and Black
 ! ipass = 1: Red
@@ -1861,327 +1861,327 @@ END DO
 !             Yellow, Blue = Black
 !
 ! Faces 1 and 2 (coordinate 1 fixed):
-parity_1_loop: DO parity_1 = 1, 2
-  IF(cycle_face(parity_1)) CYCLE parity_1_loop
-  CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+      parity_1_loop: DO parity_1 = 1, 2
+         IF(cycle_face(parity_1)) CYCLE parity_1_loop
+         CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
 !
-  IF(ipass==0 .OR. MODULO(parity_1+ipass,2)==0) THEN
+         IF(ipass==0 .OR. MODULO(parity_1+ipass,2)==0) THEN
 !
 ! Yellow:
-         qf(fi(1,1),      2:mx(2)-2:2,      2:mx(3)-2:2,1:nccv) = &
-      a1*qf(fi(1,2),      4:mx(2)  :2,      4:mx(3)  :2,1:nccv) &
-    + a2*qf(fi(1,3),      3:mx(2)-1:2,      3:mx(3)-1:2,1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1):mb(3,2)-1,1:nccv)
+            qf(fi(1,1),      2:mx(2)-2:2,      2:mx(3)-2:2,1:nccv) = &
+               a1*qf(fi(1,2),      4:mx(2)  :2,      4:mx(3)  :2,1:nccv) &
+               + a2*qf(fi(1,3),      3:mx(2)-1:2,      3:mx(3)-1:2,1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1):mb(3,2)-1,1:nccv)
 !
-             qf(fi(1,1),    mx(2),      2:mx(3)-2:2,1:nccv) = &
-      a1*    qf(fi(1,2),    mx(2),      4:mx(3)  :2,1:nccv) &
-    + a2*    qf(fi(1,3),    mx(2),      3:mx(3)-1:2,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,2)+1,mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,2)  ,mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,2)-1,mb(3,1):mb(3,2)-1,1:nccv))
+            qf(fi(1,1),    mx(2),      2:mx(3)-2:2,1:nccv) = &
+               a1*    qf(fi(1,2),    mx(2),      4:mx(3)  :2,1:nccv) &
+               + a2*    qf(fi(1,3),    mx(2),      3:mx(3)-1:2,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,2)+1,mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,2)  ,mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,2)-1,mb(3,1):mb(3,2)-1,1:nccv))
 !
-             qf(fi(1,1),      2:mx(2)-2:2,    mx(3),1:nccv) = &
-      a1*    qf(fi(1,2),      4:mx(2)  :2,    mx(3),1:nccv) &
-    + a2*    qf(fi(1,3),      3:mx(2)-1:2,    mx(3),1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)+1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)  ,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)-1,1:nccv))
+            qf(fi(1,1),      2:mx(2)-2:2,    mx(3),1:nccv) = &
+               a1*    qf(fi(1,2),      4:mx(2)  :2,    mx(3),1:nccv) &
+               + a2*    qf(fi(1,3),      3:mx(2)-1:2,    mx(3),1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)+1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)  ,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,2)-1,1:nccv))
 !
 ! Blue:
-         qf(fi(1,1),      3:mx(2)-1:2,      3:mx(3)-1:2,1:nccv) = &
-      a1*qf(fi(1,2),      1:mx(2)-3:2,      1:mx(3)-3:2,1:nccv) &
-    + a2*qf(fi(1,3),      2:mx(2)-2:2,      2:mx(3)-2:2,1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)+1:mb(3,2),1:nccv)
+            qf(fi(1,1),      3:mx(2)-1:2,      3:mx(3)-1:2,1:nccv) = &
+               a1*qf(fi(1,2),      1:mx(2)-3:2,      1:mx(3)-3:2,1:nccv) &
+               + a2*qf(fi(1,3),      2:mx(2)-2:2,      2:mx(3)-2:2,1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)+1:mb(3,2),1:nccv)
 !
-             qf(fi(1,1),      3:mx(2)-1:2,        1,1:nccv) = &
-      a1*    qf(fi(1,2),      1:mx(2)-3:2,        1,1:nccv) &
-    + a2*    qf(fi(1,3),      2:mx(2)-2:2,        1,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)-1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)  ,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)+1,1:nccv))
+            qf(fi(1,1),      3:mx(2)-1:2,        1,1:nccv) = &
+               a1*    qf(fi(1,2),      1:mx(2)-3:2,        1,1:nccv) &
+               + a2*    qf(fi(1,3),      2:mx(2)-2:2,        1,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)-1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)  ,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1)+1,1:nccv))
 !
-             qf(fi(1,1),        1,      3:mx(3)-1:2,1:nccv) = &
-      a1*    qf(fi(1,2),        1,      1:mx(3)-3:2,1:nccv) &
-    + a2*    qf(fi(1,3),        1,      2:mx(3)-2:2,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1)-1,mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1)  ,mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1)+1,mb(3,1)+1:mb(3,2),1:nccv))
-  END IF
+            qf(fi(1,1),        1,      3:mx(3)-1:2,1:nccv) = &
+               a1*    qf(fi(1,2),        1,      1:mx(3)-3:2,1:nccv) &
+               + a2*    qf(fi(1,3),        1,      2:mx(3)-2:2,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1)-1,mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1)  ,mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1)+1,mb(3,1)+1:mb(3,2),1:nccv))
+         END IF
 !
-  IF(ipass==0 .OR. MODULO(parity_1+ipass,2)==1) THEN
+         IF(ipass==0 .OR. MODULO(parity_1+ipass,2)==1) THEN
 !
 ! Green:
-         qf(fi(1,1),      3:mx(2)-1:2,      2:mx(3)-2:2,1:nccv) = &
-      a1*qf(fi(1,2),      1:mx(2)-3:2,      4:mx(3)  :2,1:nccv) &
-    + a2*qf(fi(1,3),      2:mx(2)-2:2,      3:mx(3)-1:2,1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1):mb(3,2)-1,1:nccv)
+            qf(fi(1,1),      3:mx(2)-1:2,      2:mx(3)-2:2,1:nccv) = &
+               a1*qf(fi(1,2),      1:mx(2)-3:2,      4:mx(3)  :2,1:nccv) &
+               + a2*qf(fi(1,3),      2:mx(2)-2:2,      3:mx(3)-1:2,1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,1):mb(3,2)-1,1:nccv)
 !
-             qf(fi(1,1),        1,      2:mx(3)-2:2,1:nccv) = &
-      a1*    qf(fi(1,2),        1,      4:mx(3)  :2,1:nccv) &
-    + a2*    qf(fi(1,3),        1,      3:mx(3)-1:2,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1)-1,mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1)  ,mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1)+1,mb(3,1):mb(3,2)-1,1:nccv))
+            qf(fi(1,1),        1,      2:mx(3)-2:2,1:nccv) = &
+               a1*    qf(fi(1,2),        1,      4:mx(3)  :2,1:nccv) &
+               + a2*    qf(fi(1,3),        1,      3:mx(3)-1:2,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1)-1,mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1)  ,mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1)+1,mb(3,1):mb(3,2)-1,1:nccv))
 !
-             qf(fi(1,1),      3:mx(2)-1:2,    mx(3),1:nccv) = &
-      a1*    qf(fi(1,2),      1:mx(2)-3:2,    mx(3),1:nccv) &
-    + a2*    qf(fi(1,3),      2:mx(2)-2:2,    mx(3),1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)+1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)  ,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)-1,1:nccv))
+            qf(fi(1,1),      3:mx(2)-1:2,    mx(3),1:nccv) = &
+               a1*    qf(fi(1,2),      1:mx(2)-3:2,    mx(3),1:nccv) &
+               + a2*    qf(fi(1,3),      2:mx(2)-2:2,    mx(3),1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)+1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)  ,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1)+1:mb(2,2),mb(3,2)-1,1:nccv))
 !
 ! Red:
-         qf(fi(1,1),      2:mx(2)-2:2,      3:mx(3)-1:2,1:nccv) = &
-      a1*qf(fi(1,2),      4:mx(2)  :2,      1:mx(3)-3:2,1:nccv) &
-    + a2*qf(fi(1,3),      3:mx(2)-1:2,      2:mx(3)-2:2,1:nccv) &
-    + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)+1:mb(3,2),1:nccv)
+            qf(fi(1,1),      2:mx(2)-2:2,      3:mx(3)-1:2,1:nccv) = &
+               a1*qf(fi(1,2),      4:mx(2)  :2,      1:mx(3)-3:2,1:nccv) &
+               + a2*qf(fi(1,3),      3:mx(2)-1:2,      2:mx(3)-2:2,1:nccv) &
+               + a3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)+1:mb(3,2),1:nccv)
 !
-             qf(fi(1,1),      2:mx(2)-2:2,        1,1:nccv) = &
-      a1*    qf(fi(1,2),      4:mx(2)  :2,        1,1:nccv) &
-    + a2*    qf(fi(1,3),      3:mx(2)-1:2,        1,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)-1,1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)  ,1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)+1,1:nccv))
+            qf(fi(1,1),      2:mx(2)-2:2,        1,1:nccv) = &
+               a1*    qf(fi(1,2),      4:mx(2)  :2,        1,1:nccv) &
+               + a2*    qf(fi(1,3),      3:mx(2)-1:2,        1,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)-1,1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)  ,1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,1):mb(2,2)-1,mb(3,1)+1,1:nccv))
 !
-             qf(fi(1,1),    mx(2),      3:mx(3)-1:2,1:nccv) = &
-      a1*    qf(fi(1,2),    mx(2),      1:mx(3)-3:2,1:nccv) &
-    + a2*    qf(fi(1,3),    mx(2),      2:mx(3)-2:2,1:nccv) &
-    + a3*(b1*qc(fi(1,4),mb(2,2)+1,mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b2*qc(fi(1,4),mb(2,2)  ,mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b3*qc(fi(1,4),mb(2,2)-1,mb(3,1)+1:mb(3,2),1:nccv))
-  END IF
+            qf(fi(1,1),    mx(2),      3:mx(3)-1:2,1:nccv) = &
+               a1*    qf(fi(1,2),    mx(2),      1:mx(3)-3:2,1:nccv) &
+               + a2*    qf(fi(1,3),    mx(2),      2:mx(3)-2:2,1:nccv) &
+               + a3*(b1*qc(fi(1,4),mb(2,2)+1,mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b2*qc(fi(1,4),mb(2,2)  ,mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b3*qc(fi(1,4),mb(2,2)-1,mb(3,1)+1:mb(3,2),1:nccv))
+         END IF
 !
 ! Corner grey cells:
-  DO parity_2 = 1, 2
-    CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
-    DO parity_3 = 1, 2
-      CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+         DO parity_2 = 1, 2
+            CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+            DO parity_3 = 1, 2
+               CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
                qf(fi(1,1),fi(2,3),fi(3,3),1:nccv) = &
-        a1*    qf(fi(1,2),fi(2,3),fi(3,3),1:nccv) &
-      + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
-      + a3*(c1*qc(fi(1,4),fi(2,5),fi(3,5),1:nccv) &
-      +     c2*qc(fi(1,4),fi(2,4),fi(3,5),1:nccv) &
-      +     c3*qc(fi(1,4),fi(2,5),fi(3,4),1:nccv) &
-      +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
-    END DO
-  END DO
-END DO parity_1_loop
+                  a1*    qf(fi(1,2),fi(2,3),fi(3,3),1:nccv) &
+                  + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
+                  + a3*(c1*qc(fi(1,4),fi(2,5),fi(3,5),1:nccv) &
+                  +     c2*qc(fi(1,4),fi(2,4),fi(3,5),1:nccv) &
+                  +     c3*qc(fi(1,4),fi(2,5),fi(3,4),1:nccv) &
+                  +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
+            END DO
+         END DO
+      END DO parity_1_loop
 !
 ! Faces 3 and 4 (coordinate 2 fixed):
-parity_2_loop: DO parity_2 = 1, 2
-  IF(cycle_face(2+parity_2)) CYCLE parity_2_loop
-  CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+      parity_2_loop: DO parity_2 = 1, 2
+         IF(cycle_face(2+parity_2)) CYCLE parity_2_loop
+         CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
 !
-  IF(ipass==0 .OR. MODULO(parity_2+ipass,2)==0) THEN
+         IF(ipass==0 .OR. MODULO(parity_2+ipass,2)==0) THEN
 !
 ! Yellow:
-         qf(      2:mx(1)-2:2,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
-      a1*qf(      4:mx(1)  :2,fi(2,2),      4:mx(3)  :2,1:nccv) &
-    + a2*qf(      3:mx(1)-1:2,fi(2,3),      3:mx(3)-1:2,1:nccv) &
-    + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
+            qf(      2:mx(1)-2:2,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
+               a1*qf(      4:mx(1)  :2,fi(2,2),      4:mx(3)  :2,1:nccv) &
+               + a2*qf(      3:mx(1)-1:2,fi(2,3),      3:mx(3)-1:2,1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
 !
-             qf(      2:mx(1)-2:2,fi(2,1),    mx(3),1:nccv) = &
-      a1*    qf(      4:mx(1)  :2,fi(2,2),    mx(3),1:nccv) &
-    + a2*    qf(      3:mx(1)-1:2,fi(2,3),    mx(3),1:nccv) &
-    + a3*(b1*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)+1,1:nccv) &
-    +     b2*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)  ,1:nccv) &
-    +     b3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)-1,1:nccv))
+            qf(      2:mx(1)-2:2,fi(2,1),    mx(3),1:nccv) = &
+               a1*    qf(      4:mx(1)  :2,fi(2,2),    mx(3),1:nccv) &
+               + a2*    qf(      3:mx(1)-1:2,fi(2,3),    mx(3),1:nccv) &
+               + a3*(b1*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)+1,1:nccv) &
+               +     b2*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)  ,1:nccv) &
+               +     b3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,2)-1,1:nccv))
 !
-             qf(    mx(1),fi(2,1),      2:mx(3)-2:2,1:nccv) = &
-      a1*    qf(    mx(1),fi(2,2),      4:mx(3)  :2,1:nccv) &
-    + a2*    qf(    mx(1),fi(2,3),      3:mx(3)-1:2,1:nccv) &
-    + a3*(b1*qc(mb(1,2)+1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b2*qc(mb(1,2)  ,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b3*qc(mb(1,2)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv))
+            qf(    mx(1),fi(2,1),      2:mx(3)-2:2,1:nccv) = &
+               a1*    qf(    mx(1),fi(2,2),      4:mx(3)  :2,1:nccv) &
+               + a2*    qf(    mx(1),fi(2,3),      3:mx(3)-1:2,1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b2*qc(mb(1,2)  ,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b3*qc(mb(1,2)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv))
 !
 ! Blue:
-         qf(      3:mx(1)-1:2,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
-      a1*qf(      1:mx(1)-3:2,fi(2,2),      1:mx(3)-3:2,1:nccv) &
-    + a2*qf(      2:mx(1)-2:2,fi(2,3),      2:mx(3)-2:2,1:nccv) &
-    + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
+            qf(      3:mx(1)-1:2,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
+               a1*qf(      1:mx(1)-3:2,fi(2,2),      1:mx(3)-3:2,1:nccv) &
+               + a2*qf(      2:mx(1)-2:2,fi(2,3),      2:mx(3)-2:2,1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
 !
-             qf(        1,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
-      a1*    qf(        1,fi(2,2),      1:mx(3)-3:2,1:nccv) &
-    + a2*    qf(        1,fi(2,3),      2:mx(3)-2:2,1:nccv) &
-    + a3*(b1*qc(mb(1,1)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b2*qc(mb(1,1)  ,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b3*qc(mb(1,1)+1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv))
+            qf(        1,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
+               a1*    qf(        1,fi(2,2),      1:mx(3)-3:2,1:nccv) &
+               + a2*    qf(        1,fi(2,3),      2:mx(3)-2:2,1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b2*qc(mb(1,1)  ,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b3*qc(mb(1,1)+1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv))
 !
-             qf(      3:mx(1)-1:2,fi(2,1),        1,1:nccv) = &
-      a1*    qf(      1:mx(1)-3:2,fi(2,2),        1,1:nccv) &
-    + a2*    qf(      2:mx(1)-2:2,fi(2,3),        1,1:nccv) &
-    + a3*(b1*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)-1,1:nccv) &
-    +     b2*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)  ,1:nccv) &
-    +     b3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)+1,1:nccv))
-  END IF
+            qf(      3:mx(1)-1:2,fi(2,1),        1,1:nccv) = &
+               a1*    qf(      1:mx(1)-3:2,fi(2,2),        1,1:nccv) &
+               + a2*    qf(      2:mx(1)-2:2,fi(2,3),        1,1:nccv) &
+               + a3*(b1*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)-1,1:nccv) &
+               +     b2*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)  ,1:nccv) &
+               +     b3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1)+1,1:nccv))
+         END IF
 !
-  IF(ipass==0 .OR. MODULO(parity_2+ipass,2)==1) THEN
+         IF(ipass==0 .OR. MODULO(parity_2+ipass,2)==1) THEN
 !
 ! Green:
-         qf(      3:mx(1)-1:2,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
-      a1*qf(      1:mx(1)-3:2,fi(2,2),      4:mx(3)  :2,1:nccv) &
-    + a2*qf(      2:mx(1)-2:2,fi(2,3),      3:mx(3)-1:2,1:nccv) &
-    + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
+            qf(      3:mx(1)-1:2,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
+               a1*qf(      1:mx(1)-3:2,fi(2,2),      4:mx(3)  :2,1:nccv) &
+               + a2*qf(      2:mx(1)-2:2,fi(2,3),      3:mx(3)-1:2,1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,1):mb(3,2)-1,1:nccv)
 !
-             qf(      2:mx(1)-2:2,fi(2,1),        1,1:nccv) = &
-      a1*    qf(      4:mx(1)  :2,fi(2,2),        1,1:nccv) &
-    + a2*    qf(      3:mx(1)-1:2,fi(2,3),        1,1:nccv) &
-    + a3*(b1*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)-1,1:nccv) &
-    +     b2*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)  ,1:nccv) &
-    +     b3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)+1,1:nccv))
+            qf(      2:mx(1)-2:2,fi(2,1),        1,1:nccv) = &
+               a1*    qf(      4:mx(1)  :2,fi(2,2),        1,1:nccv) &
+               + a2*    qf(      3:mx(1)-1:2,fi(2,3),        1,1:nccv) &
+               + a3*(b1*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)-1,1:nccv) &
+               +     b2*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)  ,1:nccv) &
+               +     b3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)+1,1:nccv))
 !
-             qf(    mx(1),fi(2,1),      3:mx(3)-1:2,1:nccv) = &
-      a1*    qf(    mx(1),fi(2,2),      1:mx(3)-3:2,1:nccv) &
-    + a2*    qf(    mx(1),fi(2,3),      2:mx(3)-2:2,1:nccv) &
-    + a3*(b1*qc(mb(1,2)+1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b2*qc(mb(1,2)  ,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
-    +     b3*qc(mb(1,2)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv))
+            qf(    mx(1),fi(2,1),      3:mx(3)-1:2,1:nccv) = &
+               a1*    qf(    mx(1),fi(2,2),      1:mx(3)-3:2,1:nccv) &
+               + a2*    qf(    mx(1),fi(2,3),      2:mx(3)-2:2,1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b2*qc(mb(1,2)  ,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv) &
+               +     b3*qc(mb(1,2)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv))
 !
 ! Red:
-         qf(      2:mx(1)-2:2,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
-      a1*qf(      4:mx(1)  :2,fi(2,2),      1:mx(3)-3:2,1:nccv) &
-    + a2*qf(      3:mx(1)-1:2,fi(2,3),      2:mx(3)-2:2,1:nccv) &
-    + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
+            qf(      2:mx(1)-2:2,fi(2,1),      3:mx(3)-1:2,1:nccv) = &
+               a1*qf(      4:mx(1)  :2,fi(2,2),      1:mx(3)-3:2,1:nccv) &
+               + a2*qf(      3:mx(1)-1:2,fi(2,3),      2:mx(3)-2:2,1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,fi(2,4),mb(3,1)+1:mb(3,2),1:nccv)
 !
-             qf(        1,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
-      a1*    qf(        1,fi(2,2),      4:mx(3)  :2,1:nccv) &
-    + a2*    qf(        1,fi(2,3),      3:mx(3)-1:2,1:nccv) &
-    + a3*(b1*qc(mb(1,1)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b2*qc(mb(1,1)  ,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
-    +     b3*qc(mb(1,1)+1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv))
+            qf(        1,fi(2,1),      2:mx(3)-2:2,1:nccv) = &
+               a1*    qf(        1,fi(2,2),      4:mx(3)  :2,1:nccv) &
+               + a2*    qf(        1,fi(2,3),      3:mx(3)-1:2,1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b2*qc(mb(1,1)  ,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv) &
+               +     b3*qc(mb(1,1)+1,fi(2,4),mb(3,1):mb(3,2)-1,1:nccv))
 !
-             qf(      3:mx(1)-1:2,fi(2,1),    mx(3),1:nccv) = &
-      a1*    qf(      1:mx(1)-3:2,fi(2,2),    mx(3),1:nccv) &
-    + a2*    qf(      2:mx(1)-2:2,fi(2,3),    mx(3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)+1,1:nccv) &
-    +     b2*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)  ,1:nccv) &
-    +     b3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)-1,1:nccv))
-  END IF
+            qf(      3:mx(1)-1:2,fi(2,1),    mx(3),1:nccv) = &
+               a1*    qf(      1:mx(1)-3:2,fi(2,2),    mx(3),1:nccv) &
+               + a2*    qf(      2:mx(1)-2:2,fi(2,3),    mx(3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)+1,1:nccv) &
+               +     b2*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)  ,1:nccv) &
+               +     b3*qc(mb(1,1)+1:mb(1,2),fi(2,4),mb(3,2)-1,1:nccv))
+         END IF
 !
 ! Corner grey cells:
-  DO parity_1 = 1, 2
-    CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
-    DO parity_3 = 1, 2
-      CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+         DO parity_1 = 1, 2
+            CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+            DO parity_3 = 1, 2
+               CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
                qf(fi(1,3),fi(2,1),fi(3,3),1:nccv) = &
-        a1*    qf(fi(1,3),fi(2,2),fi(3,3),1:nccv) &
-      + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
-      + a3*(c1*qc(fi(1,5),fi(2,4),fi(3,5),1:nccv) &
-      +     c2*qc(fi(1,4),fi(2,4),fi(3,5),1:nccv) &
-      +     c3*qc(fi(1,5),fi(2,4),fi(3,4),1:nccv) &
-      +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
-    END DO
-  END DO
-END DO parity_2_loop
+                  a1*    qf(fi(1,3),fi(2,2),fi(3,3),1:nccv) &
+                  + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
+                  + a3*(c1*qc(fi(1,5),fi(2,4),fi(3,5),1:nccv) &
+                  +     c2*qc(fi(1,4),fi(2,4),fi(3,5),1:nccv) &
+                  +     c3*qc(fi(1,5),fi(2,4),fi(3,4),1:nccv) &
+                  +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
+            END DO
+         END DO
+      END DO parity_2_loop
 !
 ! Faces 5 and 6 (coordinate 3 fixed):
-parity_3_loop: DO parity_3 = 1, 2
-  IF(cycle_face(4+parity_3)) CYCLE parity_3_loop
-  CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
+      parity_3_loop: DO parity_3 = 1, 2
+         IF(cycle_face(4+parity_3)) CYCLE parity_3_loop
+         CALL GetFaceIndex(mx,mb,3,parity_3,fi(3,1:5))
 !
-  IF(ipass==0 .OR. MODULO(parity_3+ipass,2)==0) THEN
+         IF(ipass==0 .OR. MODULO(parity_3+ipass,2)==0) THEN
 !
 ! Yellow:
-         qf(      2:mx(1)-2:2,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
-      a1*qf(      4:mx(1)  :2,      4:mx(2)  :2,fi(3,2),1:nccv) &
-    + a2*qf(      3:mx(1)-1:2,      3:mx(2)-1:2,fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
+            qf(      2:mx(1)-2:2,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
+               a1*qf(      4:mx(1)  :2,      4:mx(2)  :2,fi(3,2),1:nccv) &
+               + a2*qf(      3:mx(1)-1:2,      3:mx(2)-1:2,fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
 !
-             qf(    mx(1),      2:mx(2)-2:2,fi(3,1),1:nccv) = &
-      a1*    qf(    mx(1),      4:mx(2)  :2,fi(3,2),1:nccv) &
-    + a2*    qf(    mx(1),      3:mx(2)-1:2,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,2)+1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,2)  ,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,2)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv))
+            qf(    mx(1),      2:mx(2)-2:2,fi(3,1),1:nccv) = &
+               a1*    qf(    mx(1),      4:mx(2)  :2,fi(3,2),1:nccv) &
+               + a2*    qf(    mx(1),      3:mx(2)-1:2,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,2)  ,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,2)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv))
 !
-             qf(      2:mx(1)-2:2,    mx(2),fi(3,1),1:nccv) = &
-      a1*    qf(      4:mx(1)  :2,    mx(2),fi(3,2),1:nccv) &
-    + a2*    qf(      3:mx(1)-1:2,    mx(2),fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1):mb(1,2)-1,mb(2,2)+1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1):mb(1,2)-1,mb(2,2)  ,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1):mb(1,2)-1,mb(2,2)-1,fi(3,4),1:nccv))
+            qf(      2:mx(1)-2:2,    mx(2),fi(3,1),1:nccv) = &
+               a1*    qf(      4:mx(1)  :2,    mx(2),fi(3,2),1:nccv) &
+               + a2*    qf(      3:mx(1)-1:2,    mx(2),fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1):mb(1,2)-1,mb(2,2)+1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1):mb(1,2)-1,mb(2,2)  ,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1):mb(1,2)-1,mb(2,2)-1,fi(3,4),1:nccv))
 !
 ! Blue:
-         qf(      3:mx(1)-1:2,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
-      a1*qf(      1:mx(1)-3:2,      1:mx(2)-3:2,fi(3,2),1:nccv) &
-    + a2*qf(      2:mx(1)-2:2,      2:mx(2)-2:2,fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
+            qf(      3:mx(1)-1:2,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
+               a1*qf(      1:mx(1)-3:2,      1:mx(2)-3:2,fi(3,2),1:nccv) &
+               + a2*qf(      2:mx(1)-2:2,      2:mx(2)-2:2,fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
 !
-             qf(      3:mx(1)-1:2,        1,fi(3,1),1:nccv) = &
-      a1*    qf(      1:mx(1)-3:2,        1,fi(3,2),1:nccv) &
-    + a2*    qf(      2:mx(1)-2:2,        1,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)+1:mb(1,2),mb(2,1)-1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1)+1:mb(1,2),mb(2,1)  ,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1)+1:mb(1,2),mb(2,1)+1,fi(3,4),1:nccv))
+            qf(      3:mx(1)-1:2,        1,fi(3,1),1:nccv) = &
+               a1*    qf(      1:mx(1)-3:2,        1,fi(3,2),1:nccv) &
+               + a2*    qf(      2:mx(1)-2:2,        1,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)+1:mb(1,2),mb(2,1)-1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1)+1:mb(1,2),mb(2,1)  ,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1)+1:mb(1,2),mb(2,1)+1,fi(3,4),1:nccv))
 !
-             qf(        1,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
-      a1*    qf(        1,      1:mx(2)-3:2,fi(3,2),1:nccv) &
-    + a2*    qf(        1,      2:mx(2)-2:2,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1)  ,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1)+1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv))
-  END IF
+            qf(        1,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
+               a1*    qf(        1,      1:mx(2)-3:2,fi(3,2),1:nccv) &
+               + a2*    qf(        1,      2:mx(2)-2:2,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1)  ,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1)+1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv))
+         END IF
 !
-  IF(ipass==0 .OR. MODULO(parity_3+ipass,2)==1) THEN
+         IF(ipass==0 .OR. MODULO(parity_3+ipass,2)==1) THEN
 !
 ! Green:
-         qf(      3:mx(1)-1:2,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
-      a1*qf(      1:mx(1)-3:2,      4:mx(2)  :2,fi(3,2),1:nccv) &
-    + a2*qf(      2:mx(1)-2:2,      3:mx(2)-1:2,fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
+            qf(      3:mx(1)-1:2,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
+               a1*qf(      1:mx(1)-3:2,      4:mx(2)  :2,fi(3,2),1:nccv) &
+               + a2*qf(      2:mx(1)-2:2,      3:mx(2)-1:2,fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1)+1:mb(1,2),mb(2,1):mb(2,2)-1,fi(3,4),1:nccv)
 !
-             qf(        1,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
-      a1*    qf(        1,      4:mx(2)  :2,fi(3,2),1:nccv) &
-    + a2*    qf(        1,      3:mx(2)-1:2,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1)  ,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1)+1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv))
+            qf(        1,      2:mx(2)-2:2,fi(3,1),1:nccv) = &
+               a1*    qf(        1,      4:mx(2)  :2,fi(3,2),1:nccv) &
+               + a2*    qf(        1,      3:mx(2)-1:2,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)-1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1)  ,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1)+1,mb(2,1):mb(2,2)-1,fi(3,4),1:nccv))
 !
-             qf(      3:mx(1)-1:2,    mx(2),fi(3,1),1:nccv) = &
-      a1*    qf(      1:mx(1)-3:2,    mx(2),fi(3,2),1:nccv) &
-    + a2*    qf(      2:mx(1)-2:2,    mx(2),fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1)+1:mb(1,2),mb(2,2)+1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1)+1:mb(1,2),mb(2,2)  ,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1)+1:mb(1,2),mb(2,2)-1,fi(3,4),1:nccv))
+            qf(      3:mx(1)-1:2,    mx(2),fi(3,1),1:nccv) = &
+               a1*    qf(      1:mx(1)-3:2,    mx(2),fi(3,2),1:nccv) &
+               + a2*    qf(      2:mx(1)-2:2,    mx(2),fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1)+1:mb(1,2),mb(2,2)+1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1)+1:mb(1,2),mb(2,2)  ,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1)+1:mb(1,2),mb(2,2)-1,fi(3,4),1:nccv))
 !
 ! Red:
-         qf(      2:mx(1)-2:2,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
-      a1*qf(      4:mx(1)  :2,      1:mx(2)-3:2,fi(3,2),1:nccv) &
-    + a2*qf(      3:mx(1)-1:2,      2:mx(2)-2:2,fi(3,3),1:nccv) &
-    + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
+            qf(      2:mx(1)-2:2,      3:mx(2)-1:2,fi(3,1),1:nccv) = &
+               a1*qf(      4:mx(1)  :2,      1:mx(2)-3:2,fi(3,2),1:nccv) &
+               + a2*qf(      3:mx(1)-1:2,      2:mx(2)-2:2,fi(3,3),1:nccv) &
+               + a3*qc(mb(1,1):mb(1,2)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv)
 !
-             qf(      2:mx(1)-2:2,        1,fi(3,1),1:nccv) = &
-      a1*    qf(      4:mx(1)  :2,        1,fi(3,2),1:nccv) &
-    + a2*    qf(      3:mx(1)-1:2,        1,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,1):mb(1,2)-1,mb(2,1)-1,fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,1):mb(1,2)-1,mb(2,1)  ,fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,1):mb(1,2)-1,mb(2,1)+1,fi(3,4),1:nccv))
+            qf(      2:mx(1)-2:2,        1,fi(3,1),1:nccv) = &
+               a1*    qf(      4:mx(1)  :2,        1,fi(3,2),1:nccv) &
+               + a2*    qf(      3:mx(1)-1:2,        1,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,1):mb(1,2)-1,mb(2,1)-1,fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,1):mb(1,2)-1,mb(2,1)  ,fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,1):mb(1,2)-1,mb(2,1)+1,fi(3,4),1:nccv))
 !
-             qf(    mx(1),      3:mx(2)-1:2,fi(3,1),1:nccv) = &
-      a1*    qf(    mx(1),      1:mx(2)-3:2,fi(3,2),1:nccv) &
-    + a2*    qf(    mx(1),      2:mx(2)-2:2,fi(3,3),1:nccv) &
-    + a3*(b1*qc(mb(1,2)+1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
-    +     b2*qc(mb(1,2)  ,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
-    +     b3*qc(mb(1,2)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv))
-  END IF
+            qf(    mx(1),      3:mx(2)-1:2,fi(3,1),1:nccv) = &
+               a1*    qf(    mx(1),      1:mx(2)-3:2,fi(3,2),1:nccv) &
+               + a2*    qf(    mx(1),      2:mx(2)-2:2,fi(3,3),1:nccv) &
+               + a3*(b1*qc(mb(1,2)+1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
+               +     b2*qc(mb(1,2)  ,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv) &
+               +     b3*qc(mb(1,2)-1,mb(2,1)+1:mb(2,2),fi(3,4),1:nccv))
+         END IF
 !
 ! Corner grey cells:
-  DO parity_1 = 1, 2
-    CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
-    DO parity_2 = 1, 2
-      CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
+         DO parity_1 = 1, 2
+            CALL GetFaceIndex(mx,mb,1,parity_1,fi(1,1:5))
+            DO parity_2 = 1, 2
+               CALL GetFaceIndex(mx,mb,2,parity_2,fi(2,1:5))
                qf(fi(1,3),fi(2,3),fi(3,1),1:nccv) = &
-        a1*    qf(fi(1,3),fi(2,3),fi(3,2),1:nccv) &
-      + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
-      + a3*(c1*qc(fi(1,5),fi(2,5),fi(3,4),1:nccv) &
-      +     c2*qc(fi(1,4),fi(2,5),fi(3,4),1:nccv) &
-      +     c3*qc(fi(1,5),fi(2,4),fi(3,4),1:nccv) &
-      +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
-    END DO
-  END DO
-END DO parity_3_loop
+                  a1*    qf(fi(1,3),fi(2,3),fi(3,2),1:nccv) &
+                  + a2*    qf(fi(1,3),fi(2,3),fi(3,3),1:nccv) &
+                  + a3*(c1*qc(fi(1,5),fi(2,5),fi(3,4),1:nccv) &
+                  +     c2*qc(fi(1,4),fi(2,5),fi(3,4),1:nccv) &
+                  +     c3*qc(fi(1,5),fi(2,4),fi(3,4),1:nccv) &
+                  +     c4*qc(fi(1,4),fi(2,4),fi(3,4),1:nccv))
+            END DO
+         END DO
+      END DO parity_3_loop
 !
-END SUBROUTINE Interpolate3D
+   END SUBROUTINE Interpolate3D
 END MODULE Boundary
 
 
