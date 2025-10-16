@@ -1,0 +1,26 @@
+"filename", "language", "source.markdown.math", "Fortran", "C++", "DTD", "Makefile", "comment", "blank", "total"
+"c:\MyPersonalData\Coding\BSAM-2.0\CPP\Library\NodeInfoDef.cpp", "C++", 0, 0, 0, 0, 0, 0, 1, 1
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\afasroutines.f90", "Fortran", 0, 2022, 0, 0, 0, 713, 16, 2751
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\boundary.f90", "Fortran", 0, 1523, 0, 0, 0, 655, 10, 2188
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamdriver.f90", "Fortran", 0, 9, 0, 0, 0, 58, 2, 69
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsaminputoutput.f90", "Fortran", 0, 423, 0, 0, 0, 226, 1, 650
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamroutines.f90", "Fortran", 0, 1678, 0, 0, 0, 1023, 2, 2703
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamstorage.f90", "Fortran", 0, 211, 0, 0, 0, 137, 2, 350
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\gridutilities.f90", "Fortran", 0, 1223, 0, 0, 0, 767, 11, 2001
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\nodeinfodef.f90", "Fortran", 0, 114, 0, 0, 0, 227, 1, 342
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\treeops.f90", "Fortran", 0, 891, 0, 0, 0, 300, 39, 1230
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\afasroutines.mod", "DTD", 0, 0, 0, 46, 0, 0, 0, 46
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\boundary.mod", "DTD", 0, 0, 0, 68, 0, 0, 0, 68
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsaminputoutput.mod", "DTD", 0, 0, 0, 21, 0, 0, 1, 22
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsamroutines.mod", "DTD", 0, 0, 0, 4, 0, 0, 0, 4
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsamstorage.mod", "DTD", 0, 0, 0, 15, 0, 0, 0, 15
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\gridutilities.mod", "DTD", 0, 0, 0, 54, 0, 0, 3, 57
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\nodeinfodef.mod", "DTD", 0, 0, 0, 39, 0, 0, 0, 39
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\problem.mod", "DTD", 0, 0, 0, 100, 0, 0, 0, 100
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\problemdef.mod", "DTD", 0, 0, 0, 32, 0, 0, 0, 32
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\treeops.mod", "DTD", 0, 0, 0, 56, 0, 0, 0, 56
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\makefile", "Makefile", 0, 0, 0, 0, 34, 12, 21, 67
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\problem.f90", "Fortran", 0, 1278, 0, 0, 0, 526, 27, 1831
+"c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\problemdef.f90", "Fortran", 0, 13, 0, 0, 0, 2, 2, 17
+"c:\MyPersonalData\Coding\BSAM-2.0\README.md", "source.markdown.math", 2, 0, 0, 0, 0, 0, 2, 4
+"Total", "-", 2, 9385, 0, 435, 34, 4646, 141, 14643

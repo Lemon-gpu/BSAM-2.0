@@ -53,6 +53,44 @@
 ! Revision History: Ver. 2.0 Jul. 2015 Steven Wise
 ! -----------------------------------------------------------------------
 MODULE BSAMRoutines
+! ============================= 中文概览 =============================
+! 模块：BSAMRoutines（BSAM 控制/调度模块）
+! 作用：
+! - 统一驱动 BSAM 2.0 的一次完整求解流程：读取输入、构建网格森林、
+!   初始化、时间推进、AMR 细化/回收、输出与清理。
+! - 封装核心调度子程序：BSAMSolver、TakeTimeSteps、AMR 等。
+!
+! 重要外部依赖（来自其它模块，按功能分组）：
+! - 网格/树与全局参数：NodeInfoDef（定义 nodeinfo、全局开关与尺寸等）
+! - 树操作：TreeOps（InitForest/KillForest、ApplyOnLevel(…)/Pairs、
+!   CreateBelowSeedLevels、CreateChild、DeleteMarkedNode 等）
+! - 存储与 IO：BSAMStorage（Alloc/DeAllocFields、周期边界存储）、
+!   BSAMInputOutput（ReadQ/WriteQ/WriteUniformMeshQ）
+! - 边界条件：Boundary（SetGhost、周期偏移等）
+! - 多重网格：AFASRoutines（MultigridIterations、误差评估/限制/加密）
+! - 物理问题：Problem（SetupProblem、Initialize2D/3D、SetAux/SetSrc、AfterRun）
+!
+! 文件内主要过程（简要说明）：
+! - BSAMSolver：主入口；读入运行参数，建树和根网格，初始化字段，
+!   执行时间推进（TakeTimeSteps），最终清理资源。
+! - RootInit：读取 griddata.dat（Namelist）并构造根网格的几何与边界设置，
+!   进行一致性检查并分配内存。
+! - InitSeed：基于细网格回推生成多重网格低层“种子”网格的信息。
+! - Initialize/InitializeFields：根据问题维度以用户回调方式初始化状态场。
+! - SetAuxFields/SetSrcFields：设置辅助变量与源项。
+! - CopyQToQold：保存本地 q 到 qold（包含面心速度的快照）。
+! - TakeTimeSteps：时间推进的高层循环；每帧中做 AMR、FAS V-cycle、统计、输出。
+! - AMR：递归的自适应网格细化/修复流程；标记误差、生成新子网格、转移场数据。
+! - 误差标记相关：EstimateLevelErrors、ErrFlag、SetErrFlags2D/3D、
+!   BufferAndList/InflateEdgeTags/BufferTaggedCells 等。
+! - 网格生成/传输：NewSubGrids（改 Berger–Rigoutsos 切分）、
+!   MakeNewGrid/InitFields、Transferq/TransferOverlap。
+! - 其它工具：FindCoarseLevelNeighbors、FindMeshDefects 等。
+!
+! 约定：
+! - 本文件所有新增为纯注释（以 ! 开头），不改变任何现有语句与逻辑。
+! - 变量名/接口与原始代码保持一致，注释尽量解释“含义与使用时机”。
+! ==================================================================
    IMPLICIT NONE
 !
    SAVE
@@ -63,6 +101,11 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE BSAMSolver
+! 子程序：BSAMSolver（全局驱动）
+! 作用：
+! - 读取运行参数（rundata.dat），初始化网格森林与根网格，
+! - 初始化物理问题、边界与场，按时间推进执行 AFAS 多重网格迭代，
+! - 周期性写出结果，最终回收内存并销毁森林。
       USE NodeInfoDef
       USE TreeOps, ONLY: AddRootLevelNode, ApplyOnForest, ApplyOnLevel, &
          CreateBelowSeedLevels, DeleteMarkedNode, InitForest, &
@@ -80,14 +123,36 @@ CONTAINS
       INTEGER:: i, ierror, level, ilevel
       INTEGER, DIMENSION(1:8):: values
 !
+! 局部变量说明：
+! - dummy            ：在 ApplyOnLevel/… 调用中承载简单开关/参数的通用结构。
+! - zone/date/time   ：DATE_AND_TIME 返回的时区/日期/时间字符串。
+! - values(1:8)      ：DATE_AND_TIME 返回的年月日时分秒等数值部件。
+! - i,ierror,level… ：通用整型临时变量/错误码/层级游标。
+!
       NAMELIST/rundata/dt, errortype, getafterstepstats, maxvcycles, &
          nsmoothingpasses, omega, outframes, outputuniformmesh, &
          qerrortol, restart, restartframe, syncelliptic, &
          timeiterations, updateauxfreq
+
+! Namelist [rundata] 关键参数释义：
+! - dt               ：时间步长（若 syncelliptic 为真，初始会临时置 0）。
+! - errortype        ：误差类型选择（用于 AMR/多重网格中的误差评估策略）。
+! - getafterstepstats：是否统计每步后的积分量/网格规模等数据。
+! - maxvcycles       ：每个时间步执行的 AFAS V-cycle 最大次数。
+! - nsmoothingpasses ：每次松弛迭代的遍数（多重网格平滑器参数）。
+! - omega            ：松弛参数（如加权 Jacobi/Gauss–Seidel 的权重）。
+! - outframes        ：输出帧的总数（时间推进将分配等量步数到这些帧）。
+! - outputuniformmesh：是否同时输出统一网格（便于可视化/重启）。
+! - qerrortol        ：解向量 L2 残差阈值（控制 V-cycle 收敛/提前退出）。
+! - restart          ：是否从已有输出（重启帧）继续计算。
+! - restartframe     ：重启时读取的帧编号。
+! - syncelliptic     ：是否在起步阶段对椭圆变量做一次同步（dt=0 的步骤）。
+! - timeiterations   ：总时间步数（会按 outframes 等分到每帧）。
+! - updateauxfreq    ：辅助场更新的频率（每多少 V-cycle 或步数更新一次）。
 !
 ! Initializations:
       errortype = 1
-!dt = 0.0001_r8
+! dt = 0.0001_r8
       getafterstepstats = .FALSE.
       maxvcycles = 20
       nsmoothingpasses = 2
@@ -103,6 +168,18 @@ CONTAINS
 !
 ! Read general input data:
       OPEN(UNIT=75,FILE='rundata.dat',STATUS='OLD',ACTION='READ',IOSTAT=ierror)
+      ! OPEN() 这里的每一个参数的意思是：
+         ! UNIT: 指定文件单元号（75），文件单元号的意思是：
+            ! 在 Fortran 中，文件单元号是一个整数，用于标识和管理打开的文件。
+            ! 每个打开的文件都需要一个唯一的文件单元号，以便程序能够正确地读写数据。
+            ! 通过指定文件单元号，程序可以区分不同的文件，并执行相应的输入输出操作。
+         ! FILE: 指定要打开的文件名（'rundata.dat'），该文件包含程序运行所需的参数和配置。
+         ! STATUS: 指定文件的状态（'OLD'），表示该文件必须已经存在，否则会报错。
+         ! ACTION: 指定对文件的操作类型（'READ'），表示该文件将被读取。
+         ! IOSTAT: 指定一个整数变量（ierror），用于捕获文件操作的错误状态。
+            ! 如果文件操作成功，ierror 将被设置为 0；
+            ! 如果发生错误，ierror 将被设置为一个非零值，表示具体的错误类型。
+            ! 通过检查 ierror 的值，程序可以判断文件操作是否成功，并采取相应的措施（如报错或继续执行）。
       IF(ierror/=0) THEN
          PRINT *,'Error opening input file rundata.dat. Program stop.'
          STOP
@@ -114,31 +191,54 @@ CONTAINS
       CALL DATE_AND_TIME(date,time,zone,values)
       OPEN(UNIT=76,FILE='output.dat',STATUS='UNKNOWN',ACTION='WRITE', &
          FORM='FORMATTED',POSITION='APPEND')
+      ! STATUS='UNKNOWN'：如果文件不存在则创建，存在则打开并追加内容。
+      ! FORM='FORMATTED'：指定文件为文本格式（而非二进制）。
+      ! POSITION='APPEND'：将新内容追加到文件末尾，而不是覆盖原有内容。
       WRITE(76,1001) date, time
+      ! Write() 这里的每一个参数的意思是：
+         ! 76: 指定文件单元号（76），表示将数据写入该单元号对应的文件。
+         ! 1001: 指定格式标签，表示使用标签为 1001 的格式进行数据输出。
+            ! 该格式标签在后续的 FORMAT 语句中定义，控制输出数据的布局和格式。
+         ! date, time: 指定要写入的数据变量，这里是两个字符串变量，分别表示当前的日期和时间。
 1001  FORMAT(' '/'New run at date ',A8,' and time ',A10/' ')
+! 格式标签 1001 定义了输出的具体格式：
+! - ' '：输出一个空格。
+! - 'New run at date '：输出字符串 "New run at date "。
+! - A8：输出一个长度为 8 的字符串（对应 date 变量）。
+! - ' and time '：输出字符串 " and time "。
+! - A10：输出一个长度为 10 的字符串（对应 time 变量）。
+! - '/'：换行符，表示输出结束后换行。
+! - ' '：输出一个空格。
       WRITE(76,NML=rundata)
       CLOSE(76)
+! 注：以上将本次运行的关键参数追记到 output.dat，便于复现实验。
 !
 ! By default only one rootlevel grid.  This may change in the future:
       nrootgrids = 1
+! 目前默认只有一个根网格（rootlevel）。如需多根网格，需扩展相关逻辑。
 !
 ! Initialize a forest of trees.  One root level grid generated in this call:
       CALL InitForest
+! 初始化“森林”数据结构（层级树）。该调用内会创建至少一个根层节点。
 !
 ! Read data file to initialize root level grids:
       CALL ApplyOnLevel(rootlevel,RootInit,dummy)
+! RootInit：读取 griddata.dat 并构造根网格（尺寸/边界/坐标与存储分配）。
 !
 ! Create the levels below the seed needed for multigrid:
       CALL CreateBelowSeedLevels(minlevel)
+! 为多重网格准备更粗的“种子层”（minlevel 通常为负或 0）。
 !
 ! Initialize the levels below the forest seed:
       DO ilevel = rootlevel-1, minlevel, -1
          CALL ApplyOnLevel(ilevel,InitSeed,dummy)
       END DO
+! InitSeed：由更细层向下推导 coarse 层几何/索引信息并分配存储。
 !
 ! Set user problem parameters:
       CALL SetupProblem
       PRINT *,'dt', dt
+! 调用户问题模块设置方程/物理常数等（可能调整 dt）。
 !
 ! Initialize the rootlevel data fields.  In the case of a restart, we read the
 ! fields at all above root levels, saving the data to uniformgrid(level)%q':
@@ -151,23 +251,27 @@ CONTAINS
          CALL ApplyOnLevel(rootlevel,InitializeFields,dummy)
          outputinitialdata = .TRUE.
       END IF
+! 重启：从输出文件装载多层数据；新开：调用 Initialize… 以用户自定义方式初始化。
 !
       CALL SetGhost(rootlevel,0)
       CALL ApplyOnLevel(rootlevel,SetAuxFields,dummy)
       CALL ApplyOnLevel(rootlevel,SetSrcFields,dummy)
       CALL ApplyOnLevel(rootlevel,CopyQToQold,dummy)
+! 设置根层边界、辅助变量、源项，并保存初始快照（q -> qold）。
 !
 ! Initialization complete. Start run:
       PRINT *, 'BSAM 2.0 is running ... '
       PRINT *, ' '
 !
       PRINT *,'dt', dt
-! Carry out the time steps:
+! (Core) Carry out the time steps:
       CALL TakeTimeSteps
+! 时间推进主循环（见 TakeTimeSteps）。
 !
       PRINT *,'dt', dt
 ! User-specified actions before program ends:
       CALL AfterRun
+! 用户自定义的收尾动作（统计/导出等）。
 !
 ! Delete the below-seed-level grids:
       DO level = minlevel, maxlevel
@@ -175,20 +279,28 @@ CONTAINS
          CALL ApplyOnLevel(level,ReleaseInactiveFields,dummy)
          PRINT *,' Level ',level,' fields have been released.'
       END DO
+! 回收所有层的场内存（将仍存在的非活动网格释放其字段）。
 !
 ! Delete the forest of trees:
       CALL KillForest
+! 销毁森林（释放树结构节点）。
 !
 ! Delete forest seed and below-seed levels:
       CALL ApplyOnLevel(minlevel,MarkNodeToBeDeleted,dummy)
       CALL ApplyOnLevel(minlevel,DeleteMarkedNode,dummy)
+! 确保最粗层节点被标记并真正删除。
 !
       CALL DeallocPeriodicBCStorage
+! 释放周期边界辅助存储。
 !
    END SUBROUTINE BSAMSolver
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION MarkNodeToBeDeleted(info,dummy)
+! 功能：标记当前网格节点为“待删除”。
+! 参数：
+! - info   ：节点信息（值引用传递，此处修改其 tobedeleted 标志）。
+! - dummy  ：通用参数（未使用）。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -204,6 +316,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION MarkNodeInactive(info,dummy)
+! 功能：将网格标记为非活动（activegrid = .FALSE.），以便稍后释放字段或删除。
+! 说明：AMR 重建新网格后，旧网格通常会被标成非活动，等待回收。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -219,6 +333,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION MarkNodeNonInitial(info,dummy)
+! 功能：将网格的 initialgrid 标志设为 .FALSE.，表示已不再是“初始网格”。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -234,6 +349,19 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION RootInit(rootinfo,dummy)
+! 功能：读取 griddata.dat 的 Namelist，初始化根层网格的尺寸/边界/坐标等基本信息，
+!       并执行一致性检查与存储分配。
+! 关键 Namelist [griddata] 字段说明（与 NodeInfoDef 全局变量关联）：
+! - ndims              ：维数（2 或 3）。
+! - mx(1:ndims)        ：根网格各向单元数（需为 2 的倍数）。
+! - mglobal(:,1:2)     ：根网格在全局索引系中的左右/上下(/前后)范围。
+! - xlower/xupper      ：物理域边界坐标（各向）。
+! - mbc                ：幽灵层层数（仅支持 1 或 2）。
+! - nccv/nfcv/naxv     ：单元中心/面心/辅助变量数量。
+! - mthbc(1:2*ndims)   ：边界条件编码（2 表示周期，其它为物理/内部）。
+! - desiredfillratios  ：期望填充率（AMR 子网格生成阈值参考）。
+! - minimumgridpoints  ：子网格的最小单元数（偶数，不小于 4）。
+! - maxlevel/minlevel  ：多重网格层级上限/下限。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       USE Boundary, ONLY: PeriodicSetup
@@ -255,6 +383,7 @@ CONTAINS
          naxv, nccv, nfcv, qtolerance, xlower, xupper
 !
       PRINT *, 'Reading grid data for root-level grid.'
+      ! 这里的`*`表示标准输出设备，通常是控制台或终端。
 !
 ! Set default values !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -434,7 +563,6 @@ CONTAINS
       CALL PeriodicSetup(rootinfo)
 !
       CALL AllocFields(rootinfo)
-!
       rootinfo%levellandscape = 0
 !
 ! Finished initialization of root node info structure
@@ -446,6 +574,11 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION InitSeed(seedinfo,dummy)
+! 功能：基于较细层子网格的信息构造上一层（更粗层，level-1）的“种子”网格信息，
+!       用于多重网格的层级构建（仅保留多重网格所需的信息）。
+! 说明：
+! - 本过程会检查细网格尺寸是否能被 2 整除（保证可粗化）。
+! - 设置 mx、dx、mglobal、mbounds 等，并分配基本存储。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok, GetChildInfo
       USE BSAMStorage, ONLY: AllocFields
@@ -509,6 +642,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION SetAuxFields(info,dummy)
+! 功能：若 naxv>0，则调用问题模块 SetAux(info) 设置辅助（aux）字段。
+! 条件：跳过待删除或非活动网格。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       USE Problem, ONLY: SetAux
@@ -526,6 +661,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION SetSrcFields(info,dummy)
+! 功能：调用问题模块 SetSrc(info) 设置源项（source）字段。
+! 条件：跳过待删除或非活动网格。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       USE Problem, ONLY: SetSrc
@@ -543,6 +680,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION InitializeFields(info,dummy)
+! 功能：调用 Initialize 子程序，按维度分派到 Initialize2D/3D 来生成初始场。
+! 条件：跳过待删除或非活动网格。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -559,6 +698,12 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE Initialize(info)
+! 功能：根据 ndims 分派到问题模块的 Initialize2D/Initialize3D，
+!       在局部（含幽灵层或不含，视接口而定）数组片段上填充初值。
+! 变量：
+! - mx    ：本网格各向单元数（来自 info%mx）。
+! - h     ：网格步长（info%dx(1)）。
+! - xlower：左下(后)角坐标（info%xlower）。
       USE NodeInfoDef
       USE PROBLEM, ONLY: Initialize2D, Initialize3D
       IMPLICIT NONE
@@ -591,6 +736,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION CopyQToQold(info,dummy)
+! 功能：保存当前解/速度到对应的 *old 缓存（q->qold、v*->v*old，及 qc->qcold）。
+! 场景：时间推进或网格转移前的备份，以便计算截断误差或回滚。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -621,6 +768,20 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE TakeTimeSteps
+! 功能：时间推进主循环（按 outframes 帧输出，timeiterations 总步数）。
+! 流程概要：
+! 1) 重启/新运行的起始时间与帧区间设置；必要时 syncelliptic（dt=0 一步）。
+! 2) 对每个输出帧：
+!    - 将旧层网格标为非活动，执行 AMR 构建新层级；
+!    - 删除非活动网格字段并真正删除节点；
+!    - 首次 AMR 后自上而下 FillDown 以补齐粗层的 qold；
+!    - 保存当前层级数据到 qold；
+!    - 可选：输出初始帧数据与统计；
+!    - 执行 MultigridIterations（AFAS V-cycle）；
+!    - 更新时间 currenttime，并可选统计；
+!    - 若完成 syncelliptic，则恢复 dt；
+!    - 为各层设置 info%gridtime=currenttime；
+!    - 达到帧间步数后输出本帧数据（WriteQ/WriteUniformMeshQ）。
       USE NodeInfoDef
       USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode
       USE BSAMInputOutput, ONLY: WriteQ, WriteUniformMeshQ
@@ -977,6 +1138,17 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    RECURSIVE SUBROUTINE AMR(level,estimateswitch)
+! 功能：递归执行自适应网格细化/修复。
+! 输入：
+! - level            ：当前递归处理的层级。
+! - estimateswitch?  ：可选开关，存在时跳过误差估计（用于回退重建）。
+! 流程：
+! - 调 SetGhost 同步边界；若需要，检测并修复“非相容网格”（hanging node）
+!   缺陷（FindMeshDefects）。
+! - 若修复触发，回退删除最近层级，并从更粗层重启 AMR 构建。
+! - 若需误差估计：EstimateLevelErrors（计算截断误差/用户误差并标记）。
+! - GridAdapt：依据标记生成子网格并转移场数据；更新 finestlevel；
+! - 若还有更细层需处理，递归调用 AMR(level+1)。
       USE NodeInfoDef
       USE TreeOps, ONLY: ApplyOnLevel, DeleteMarkedNode, SetLevelNodeNumbers
       USE Boundary, ONLY: SetGhost
@@ -1004,7 +1176,11 @@ CONTAINS
       CALL SetGhost(level,0)
 !
 ! Before we adapt the mesh further, check to see that the mesh is conforming:
-      IF(level >= 2 .AND. makeconformingmesh) CALL FindMeshDefects(level)
+       IF(level >= 2 .AND. makeconformingmesh) CALL FindMeshDefects(level)
+       ! 这里：
+         ! level: 当前处理层级
+         ! makeconformingmesh: 是否强制一致网格（目前硬编码为真，未来可做成用户选项）
+         ! FindMeshDefects: 检测并标记本层的“非相容网格缺陷”（defectivegridlevel(level)=.TRUE.）
 !
 ! If the mesh is defective, then we need to fix it before moving on:
       IF(defectivegridlevel(level) .AND. amrrestarts < 100) THEN
@@ -1012,42 +1188,64 @@ CONTAINS
 ! Delete the current and last active levels. Note, need to keep inactive grids:
          DO lvl = level, level-1, -1
             CALL ApplyOnLevel(lvl,ReleaseActiveFields,dummy)
+! 设定：当前强制构建“至多一个悬挂点”的一致网格（未来可做成用户选项）。
             CALL ApplyOnLevel(lvl,DeleteMarkedNode,dummy)
          END DO
+! 若不强制一致网格，则直接标记“网格构建完成”。
          defectivegridlevel(level-1:level) = .FALSE.
 !
 !  PRINT *, 'Restarting AMR at level =', level, ',    amrrestarts =', amrrestarts
+! 目的：为细层 patch 查找对应的粗层邻居关系（用于后续幽灵填充/跨层插值等）。
+! 条件：level>=1 且启用一致网格修复。
          amrrestarts = amrrestarts+1
          finestlevel = level-2
          CALL AMR(level-2,noestimates)
          ! here AMR will call himself so many times untill the top level is reached
+! 为当前层所有活动网格填充幽灵点；第二实参 0 为模式/标志（项目中常用 0 表示标准幽灵填充）。
          RETURN
 !
       END IF
+! 在进一步细化前检查网格一致性：当层数≥2 且启用一致网格，检测是否存在“非相容网格缺陷”。
 !
 ! Tag cells for refinement:
       IF(level < maxlevel .AND. (.NOT. PRESENT(estimateswitch))) THEN
+! 若本层被标记为“有缺陷”，且回退次数未超过 100，则回退并修复。
          CALL EstimateLevelErrors(level)
       END IF
 !
+! 释放当前层与上一层的“活动网格”字段，并删除已标记节点（注意：保留非活动网格以便后续转移/对齐）。
 ! Create new subgrids if necessary:
       CALL GridAdapt(level)
       CALL SetLevelNodeNumbers(level+1)
 !
+! 清除此两层的缺陷标记。
       IF(level < finestlevel) CALL AMR(level+1)
 !
    END SUBROUTINE AMR
+! 递增回退计数，回退两层重置最细层，并从更粗的 level-2 重新进入 AMR；
+! 递归调用时传入 noestimates（仅为“存在性”），跳过误差估计以加速恢复。
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE EstimateLevelErrors(level)
+! 功能：在指定层做误差估计与标记（构建 tagged cell 链表并进行缓冲/扩张）。
+! 返回上一层调用点（本分支修复流程结束）。
+! 步骤：
+! 1) 若采用默认误差策略：限制到粗层、补齐粗层幽灵、复制 q->qold，
+!    计算相对截断误差（RelativeTruncationError）。
+! 2) 遍历网格调用 EstimateError（ErrFlag），生成标记链表。
+! 3) 对标记进行边缘膨胀（InflateEdgeTags），处理周期偏移；最后销毁链表。
+! 若未达最大层，且本次未请求“跳过估计”，则进行误差估计并标记需要细化的单元。
       USE NodeInfoDef
       USE TreeOps, ONLY: ApplyOnLevel
       USE AFASRoutines, ONLY: RestrictCCSolution, RelativeTruncationError
       USE Boundary, ONLY: SetGhost, GetCoarseGhostPoints
       IMPLICIT NONE
+! 根据误差标记与缓冲结果生成新子网格、转移/插值数据，并更新 finestlevel。
 !
+! 新层生成后，为 level+1 层重新分配并设置节点编号，保持层内一致性。
       INTEGER, INTENT(IN):: level
 !
+! 若当前层尚不是最细层，则递归处理更细一层。
       TYPE(funcparam):: dummy
 !
 ! 1) Calculate the relative truncation error if needed:
@@ -1089,6 +1287,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION EstimateError(info,dummy)
+! 功能：对单个网格执行误差标记流程 ErrFlag（默认或用户策略）。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -1105,6 +1304,13 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE ErrFlag(info)
+! 功能：根据 errflagopt(level) 选择默认或用户自定义的误差标记算法，
+!       写入 info%errorflags。若配置了 ibuffer(level)>0，则触发 BufferAndList
+!       将“跨 patch 的缓冲层”映射到全局坐标并加入链表。
+! 关键变量：
+! - qrte ：相对截断误差在粗层（coarse cell）的度量（维度依 ndims）。
+! - errorflags：与细层单元对齐的二值标记。
+! - mglobal：当前网格在全局索引系的范围（用于跨格缓冲）。
       USE NodeInfoDef
       USE Problem, ONLY: SetErrFlagsUser2D, SetErrFlagsUser3D
       IMPLICIT NONE
@@ -1179,6 +1385,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE SetErrFlags2D(qrte,errorflags,mx,cmx,h,level)
+! 功能：2D 情况下，将粗单元 qrte 超阈值的 2x2 细单元块标记为 1。
+! 阈值：tol = qtolerance(level) / h^2。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1211,6 +1419,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE SetErrFlags3D(qrte,errorflags,mx,cmx,h,level)
+! 功能：3D 情况下，将粗单元 qrte 超阈值的 2x2x2 细单元块标记为 1。
+! 阈值：tol = qtolerance(level) / h^3。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1249,6 +1459,9 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE BufferAndList(errorflags,mglobal,mx,level)
+! 功能：在当前 patch 内对已标记单元进行 ibuffer(level) 层的局部扩张。
+!       若缓冲区跨越 patch 边界，则将相应的“中心单元”全局坐标加入链表，
+!       供后续在其它 patch 上进行缓冲处理（跨格一致）。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1293,6 +1506,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE AddTaggedCellToList(globalindex)
+! 功能：将一个全局单元坐标加入“标记单元”的链表（栈式，尾插为新头）。
+! 参数：globalindex(1:maxdims) 为全局索引系中的 cell 坐标。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1310,6 +1525,11 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE InflateEdgeTags(level)
+! 功能：对链表中的全局标记单元执行跨 patch 的缓冲膨胀。
+! 步骤：
+! - 在当前 level 上，通过 ApplyOnLevel(BufferTaggedCells) 应用 ibuffer 层膨胀；
+! - 若开启周期边界，则对每个周期偏移（正负方向）重复该缓冲；
+! - 逐个回溯链表直至头结点。
       USE NodeInfoDef
       USE TreeOps, ONLY: ApplyOnLevel
       USE Boundary, ONLY: GetPeriodicOffsets
@@ -1354,6 +1574,9 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION BufferTaggedCells(info,dummy)
+! 功能：将 currenttaggedcell 指定的全局“缓冲区”映射到本地 patch 索引范围，
+!       并把落在本 patch 内的单元在 info%errorflags 中置 1。
+! 说明：dummy%iswitch = ibuff 表示缓冲半径（单位：细网格单元）。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -1398,6 +1621,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE DeleteTaggedCellsList
+! 功能：销毁“标记单元”链表（自尾到头逐个释放）。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1412,6 +1636,10 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE GridAdapt(level)
+! 功能：依据误差标记生成 level+1 层的新子网格，并在新旧网格间转移场数据。
+! 步骤：
+! - RefineGrid：在每个活动网格上根据 errorflags 计算子网格范围并创建；
+! - ApplyOnLevelPairs：在同层新旧网格对之间转移重叠区域的场值。
       USE NodeInfoDef
       USE TreeOps, ONLY: ApplyOnLevel, ApplyOnLevelPairs, DeleteMarkedNode
       IMPLICIT NONE
@@ -1434,6 +1662,9 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION RefineGrid(info,dummy)
+! 功能：对单个网格，根据 errorflags 调用 NewSubGrids 生成子网格。
+! 变量：
+! - mbounds：初始为整个网格（1..mx），随后在 NewSubGrids 中分裂裁剪。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -1454,6 +1685,12 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE NewSubGrids(info,mbounds)
+! 功能：改造的 Berger–Rigoutsos 算法实现。
+! 过程：
+! - 计算签名（沿各坐标方向对误差标记求和），裁剪外层零带；
+! - 若填充率不足，优先在“空洞”处分裂，否则在“拐点”处分裂；
+! - 保证偶数长度、最小长度 mgp 等约束；直到不可再分或达到上限；
+! - 对得到的每个子块调用 MakeNewGrid 生成子网格。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1654,6 +1891,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    FUNCTION GetSignatures(errorflags,msubbounds,maxm) RESULT(gsresult)
+! 功能：计算给定子区域在各方向上的“签名”（将另两维压缩求和后的 1D 序列）。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1681,6 +1919,7 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    FUNCTION GridFlagRatio(errorflags,mbounds) RESULT(gfrresult)
+! 功能：统计子区域内被标记单元占比（用于决定是否继续分裂或接受当前子块）。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -1709,6 +1948,12 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE MakeNewGrid(parent,mbounds)
+! 功能：在父网格的 mbounds 粗单元范围内创建一个新的细化子网格节点，
+!       设置几何/边界/索引信息，分配存储，并通过 InitFields 从父网格插值初始化。
+! 要点：
+! - 子网格的 mglobal 依据父网格 mglobal 与 mbounds 映射到全局索引（×2）。
+! - mthbc 先设为 internal，再继承靠近父物理边界的一侧物理边界条件。
+! - field 分配后，levellandscape 初始化为本层级，便于缺陷检测。
       USE NodeInfoDef
       USE TreeOps, ONLY: CreateChild, GetChildInfo
       USE BSAMStorage, ONLY: AllocFields
@@ -1819,6 +2064,11 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE InitFields(parent,child)
+! 功能：从父网格到子网格的场值初始化：
+! - CC 变量：先将父层 CC 值拷贝到子层 coarse 存储（qc），再按 mbc 调用
+!   双/三线性带质量修正的 ProlongationP1MC/P2MC 或其 3D 版本生成细网格 q。
+! - FC 变量：调用 Prolongation2D/3D V1/V2(/V3) 的扩展版本在边/面上插值。
+! - 若 child%initialgrid 为真，则直接调用 Initialize(child) 由用户初始化。
       USE NodeInfoDef
       USE GridUtilities, ONLY:       Prolongation2DV1Ex,       Prolongation2DV2Ex, &
          BiLinProlongationP1MC  ,  BiLinProlongationP2MC,   &
@@ -1956,6 +2206,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION TransferValues(grid1,grid2,dummy)
+! 功能：在同层新旧网格对中，查找重叠并将“旧网格”的解转移到“新网格”。
+! 规则：当 grid1 活动而 grid2 非活动时，从 grid2→grid1；反之亦然。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -1985,6 +2237,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE Transferq(sourceinfo,targetinfo)
+! 功能：对两网格求全局索引的重叠区域，在重叠内将 sourceinfo%q 赋给 targetinfo%q。
+! 注意：此处仅处理单元中心变量 q（可按需扩展到 v* 等）。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -2016,6 +2270,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE TransferOverlap(msource,mtarget,sourceinfo,targetinfo)
+! 功能：给定两网格的全局索引范围 msource/mtarget，求其交集 moverlap，
+!       再映射到各自局部索引 ms/mt，并复制相应子数组。
       USE NodeInfoDef
       IMPLICIT NONE
 !
@@ -2051,6 +2307,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION FindCoarseLevelNeighbors(info,dummy)
+! 功能：在粗层（父层）上查询与当前细网格相邻的“对面块”的层级数，
+!       将其写入当前网格的 levellandscape（用于后续缺陷检测）。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok, GetParentInfo
       IMPLICIT NONE
@@ -2177,6 +2435,9 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    SUBROUTINE FindMeshDefects(level)
+! 功能：基于 levellandscape 在 level 层检测“非相容网格”（例如跨越两层落差的连接），
+!       并在 level-2 层标记需要再细化的单元以修复缺陷。
+! 步骤：收集缺陷→在 level-2 扩张一层缓冲（含周期偏移）→销毁链表。
       USE NodeInfoDef
       USE Boundary, ONLY: GetPeriodicOffsets
       USE TreeOps, ONLY: ApplyOnLevel
@@ -2237,6 +2498,9 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    INTEGER FUNCTION FindAndListPatchDefects(info,dummy)
+! 功能：在单个网格上，根据 levellandscape 的周边值是否等于 mylevel-2 来判定是否
+!       存在缺陷；若有，则将相应 coarse-coarse 单元的全局坐标加入链表。
+! 说明：2D 检查四边与四角；3D 则检查六面、十二条棱与八个角。
       USE NodeInfoDef
       USE TreeOps, ONLY: err_ok
       IMPLICIT NONE
@@ -2434,6 +2698,8 @@ CONTAINS
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
    FUNCTION CoarseCoarseGlobalIndex(i,j,k) RESULT(indexres)
+! 功能：给定细网格全局点 (i,j,k)，返回“向下两层”粗网格中包含该点的 cell 的全局索引。
+! 实现：两次除以 2（带奇偶修正），在各向上落到 coarse-coarse 的索引格点上。
       USE NodeInfoDef
       IMPLICIT NONE
 !

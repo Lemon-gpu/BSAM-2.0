@@ -1,0 +1,61 @@
+Date : 2025-10-16 15:42:48
+Directory : c:\MyPersonalData\Coding\BSAM-2.0
+Total : 24 files,  9856 codes, 4646 comments, 141 blanks, all 14643 lines
+
+Languages
++----------------------+------------+------------+------------+------------+------------+
+| language             | files      | code       | comment    | blank      | total      |
++----------------------+------------+------------+------------+------------+------------+
+| Fortran              |         11 |      9,385 |      4,634 |        113 |     14,132 |
+| DTD                  |         10 |        435 |          0 |          4 |        439 |
+| Makefile             |          1 |         34 |         12 |         21 |         67 |
+| source.markdown.math |          1 |          2 |          0 |          2 |          4 |
+| C++                  |          1 |          0 |          0 |          1 |          1 |
++----------------------+------------+------------+------------+------------+------------+
+
+Directories
++--------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                       | files      | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                          |         24 |      9,856 |      4,646 |        141 |     14,643 |
+| . (Files)                                                                                  |          1 |          2 |          0 |          2 |          4 |
+| CPP                                                                                        |          1 |          0 |          0 |          1 |          1 |
+| CPP\Library                                                                                |          1 |          0 |          0 |          1 |          1 |
+| Fortran                                                                                    |         22 |      9,854 |      4,646 |        138 |     14,638 |
+| Fortran\LIBRARY                                                                            |          9 |      8,094 |      4,106 |         84 |     12,284 |
+| Fortran\PROBLEM                                                                            |         13 |      1,760 |        540 |         54 |      2,354 |
+| Fortran\PROBLEM\3D Tumor Growth                                                            |         13 |      1,760 |        540 |         54 |      2,354 |
+| Fortran\PROBLEM\3D Tumor Growth (Files)                                                    |          3 |      1,325 |        540 |         50 |      1,915 |
+| Fortran\PROBLEM\3D Tumor Growth\MODF                                                       |         10 |        435 |          0 |          4 |        439 |
++--------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++--------------------------------------------------------------------------------------------+----------------------+------------+------------+------------+------------+
+| filename                                                                                   | language             | code       | comment    | blank      | total      |
++--------------------------------------------------------------------------------------------+----------------------+------------+------------+------------+------------+
+| c:\MyPersonalData\Coding\BSAM-2.0\CPP\Library\NodeInfoDef.cpp                              | C++                  |          0 |          0 |          1 |          1 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\afasroutines.f90                         | Fortran              |      2,022 |        713 |         16 |      2,751 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\boundary.f90                             | Fortran              |      1,523 |        655 |         10 |      2,188 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamdriver.f90                           | Fortran              |          9 |         58 |          2 |         69 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsaminputoutput.f90                      | Fortran              |        423 |        226 |          1 |        650 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamroutines.f90                         | Fortran              |      1,678 |      1,023 |          2 |      2,703 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\bsamstorage.f90                          | Fortran              |        211 |        137 |          2 |        350 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\gridutilities.f90                        | Fortran              |      1,223 |        767 |         11 |      2,001 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\nodeinfodef.f90                          | Fortran              |        114 |        227 |          1 |        342 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\LIBRARY\treeops.f90                              | Fortran              |        891 |        300 |         39 |      1,230 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\afasroutines.mod    | DTD                  |         46 |          0 |          0 |         46 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\boundary.mod        | DTD                  |         68 |          0 |          0 |         68 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsaminputoutput.mod | DTD                  |         21 |          0 |          1 |         22 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsamroutines.mod    | DTD                  |          4 |          0 |          0 |          4 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\bsamstorage.mod     | DTD                  |         15 |          0 |          0 |         15 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\gridutilities.mod   | DTD                  |         54 |          0 |          3 |         57 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\nodeinfodef.mod     | DTD                  |         39 |          0 |          0 |         39 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\problem.mod         | DTD                  |        100 |          0 |          0 |        100 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\problemdef.mod      | DTD                  |         32 |          0 |          0 |         32 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\MODF\treeops.mod         | DTD                  |         56 |          0 |          0 |         56 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\makefile                 | Makefile             |         34 |         12 |         21 |         67 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\problem.f90              | Fortran              |      1,278 |        526 |         27 |      1,831 |
+| c:\MyPersonalData\Coding\BSAM-2.0\Fortran\PROBLEM\3D Tumor Growth\problemdef.f90           | Fortran              |         13 |          2 |          2 |         17 |
+| c:\MyPersonalData\Coding\BSAM-2.0\README.md                                                | source.markdown.math |          2 |          0 |          2 |          4 |
+| Total                                                                                      |                      |      9,856 |      4,646 |        141 |     14,643 |
++--------------------------------------------------------------------------------------------+----------------------+------------+------------+------------+------------+
