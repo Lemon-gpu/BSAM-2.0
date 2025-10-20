@@ -1156,6 +1156,7 @@ CONTAINS
 !
       INTEGER, INTENT(IN):: level
       INTEGER, OPTIONAL, INTENT(IN):: estimateswitch
+      ! OPTIONAL means that the caller may choose to not provide this argument
 !
       INTEGER:: lvl, noestimates
       TYPE(funcparam):: dummy
