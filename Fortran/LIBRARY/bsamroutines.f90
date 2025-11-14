@@ -224,6 +224,10 @@ CONTAINS
 ! Read data file to initialize root level grids:
       CALL ApplyOnLevel(rootlevel,RootInit,dummy)
 ! RootInit：读取 griddata.dat 并构造根网格（尺寸/边界/坐标与存储分配）。
+! 值得注意的是，ApplyOnLevel是一个批量apply函数的函数，他的三个参数分别是：
+! - level: 指定要操作的层级（这里是 rootlevel）。
+! - func: 指定要应用的函数（这里是 RootInit）。
+! - param: 传递给 func 的附加参数（这里是 dummy，一个空的 funcparam 结构）。
 !
 ! Create the levels below the seed needed for multigrid:
       CALL CreateBelowSeedLevels(minlevel)
@@ -353,19 +357,19 @@ CONTAINS
 !       并执行一致性检查与存储分配。
 ! 关键 Namelist [griddata] 字段说明（与 NodeInfoDef 全局变量关联）：
 ! - ndims              ：维数（2 或 3）。
-! - mx(1:ndims)        ：根网格各向单元数（需为 2 的倍数）。
-! - mglobal(:,1:2)     ：根网格在全局索引系中的左右/上下(/前后)范围。
+! - mx(1:ndims)        ：根网格各向单元数（需为 2 的倍数）。这是一个数组，也就是说，假设我们有个256x256的网格，那么此时ndims=2，mx(1)=256，mx(2)=256。
+! - mglobal(:,1:2)     ：根网格在全局索引系中的左右/上下(/前后)范围。这是一个二维数组，假设ndims=2，那么mglobal(1,1)和mglobal(1,2)分别表示x方向的起始和结束索引，mglobal(2,1)和mglobal(2,2)分别表示y方向的起始和结束索引。想要表示一个256x256的网格在全局索引系中的范围，那么mglobal(1,1)=1，mglobal(1,2)=256，mglobal(2,1)=1，mglobal(2,2)=256。如果是三维网格，那么就多了一维，mglobal(3,1)和mglobal(3,2)分别表示z方向的起始和结束索引。
 ! - xlower/xupper      ：物理域边界坐标（各向）。
 ! - mbc                ：幽灵层层数（仅支持 1 或 2）。
 ! - nccv/nfcv/naxv     ：单元中心/面心/辅助变量数量。
-! - mthbc(1:2*ndims)   ：边界条件编码（2 表示周期，其它为物理/内部）。
+! - mthbc(1:2*ndims)   ：边界条件编码（2 表示周期，其它为物理/内部）。这也是一个数组，这个东西意味着，假设ndims=2，那么mthbc(1)和mthbc(2)分别表示x方向的左边界和右边界的边界条件，mthbc(3)和mthbc(4)分别表示y方向的下边界和上边界的边界条件。他的储值由Boundary模块中的常量定义决定的。
 ! - desiredfillratios  ：期望填充率（AMR 子网格生成阈值参考）。
 ! - minimumgridpoints  ：子网格的最小单元数（偶数，不小于 4）。
 ! - maxlevel/minlevel  ：多重网格层级上限/下限。
       USE NodeInfoDef
-      USE TreeOps, ONLY: err_ok
-      USE Boundary, ONLY: PeriodicSetup
-      USE BSAMStorage, ONLY: AllocFields
+      USE TreeOps, ONLY: err_ok ! 拿了个常量
+      USE Boundary, ONLY: PeriodicSetup ! 周期边界设置
+      USE BSAMStorage, ONLY: AllocFields ! 分配字段存储
       IMPLICIT NONE
 !
       TYPE(nodeinfo):: rootinfo
@@ -373,8 +377,8 @@ CONTAINS
 !
       CHARACTER(LEN=12):: filename
       INTEGER:: i, ierror, n
-      INTEGER, DIMENSION(1:maxdims):: mx
-      INTEGER, DIMENSION(1:2*maxdims):: mthbc
+      INTEGER, DIMENSION(1:maxdims):: mx 
+      INTEGER, DIMENSION(1:2*maxdims):: mthbc 
       INTEGER, DIMENSION(1:maxdims,1:2):: mglobal
       REAL(KIND=r8), DIMENSION(1:maxdims):: dx, xlower, xupper
 !

@@ -169,6 +169,9 @@ MODULE TreeOps
    ! ------------------------------ 核心数据结构 ------------------------------
    ! 类型: node
    ! 说明: 抽象出树中的一个网格块/结点，维护家族关系与层级信息。
+   ! 如果我们规定左边的节点更年长，右边的节点更年轻，那么对于一个节点 N：
+   ! 上面的节点是他的 Parent（父亲），下面的节点是他的 Child（孩子），
+   ! 左边的节点是他的 Sibling（兄长），右边的节点是他的 Neighbor（同层相邻节点）。
    TYPE, PUBLIC:: node
       PRIVATE
       TYPE(nodeinfo), POINTER:: info      ! 用户数据载体，由 NodeInfoDef 定义
@@ -212,11 +215,12 @@ MODULE TreeOps
    ! CurrentNode:当前遍历焦点结点（遍历/回调时使用）。
    ! Stack:      遍历栈，按层记录当前节点（便于在回调里查询祖先等）。
    ! YoungestOnLevel/EldestOnLevel: 每层的横向链首/尾；NrOfNodes: 每层节点数。
+   ! NrOfNodes: 每层节点数。
    TYPE (Node), POINTER, SAVE :: ForestSeed
    TYPE (Node), POINTER, SAVE :: Root
    TYPE (Node), POINTER, SAVE :: CurrentNode
    TYPE (NodePointer), DIMENSION(-MaxDepth:MaxDepth) :: Stack
-   TYPE (NodePointer), DIMENSION(-MaxDepth:MaxDepth) :: YoungestOnLevel
+   TYPE (NodePointer), DIMENSION(-MaxDepth:MaxDepth) :: YoungestOnLevel 
    TYPE (NodePointer), DIMENSION(-MaxDepth:MaxDepth) :: EldestOnLevel
    INTEGER, DIMENSION(-MaxDepth:MaxDepth) :: NrOfNodes
 
@@ -267,8 +271,10 @@ CONTAINS
    SUBROUTINE InitForest(InfoInit)
       LOGICAL, INTENT(IN), OPTIONAL :: InfoInit
       INTEGER :: iError
-      INTEGER :: L
-      !
+      INTEGER :: L ! 这不是Left，这是Level
+      ! ALLOCATE是Fortran的动态内存分配语句，用于在运行时分配内存空间。它的语法如下：
+      ! ALLOCATE (variable_list, STAT=iError)，其中 variable_list 是要分配内存的变量列表，
+      ! STAT=iError 是一个可选参数，用于捕获分配内存时的错误状态。如果分配成功，iError 将被设置为 0；
       ALLOCATE (Root,ForestSeed,STAT=iError)
       IF (iError /= 0) THEN
          PRINT *,"Error allocating tree/forest roots in InitForest."
@@ -281,12 +287,12 @@ CONTAINS
       NULLIFY(ForestSeed%Sibling)
       NULLIFY(ForestSeed%Neighbor)
 
-      ForestSeed%Child=>Root
-      ForestSeed%level=FOREST_SEED
-      ForestSeed%ChildNo=NOT_A_CHILD
-      ForestSeed%NrOfChildren=1
-      ForestSeed%LeafDist=ZERO_LEAF_NODE_DIST
-      ForestSeed%globalnodenum=FOREST_SEED
+      ForestSeed%Child=>Root ! ForestSeed 的 Child 指向第一棵树的 Root
+      ForestSeed%level=FOREST_SEED ! ForestSeed 的层级设为 FOREST_SEED（一个大于MaxDepth的负值），这意味着它不参与实际的层级计算
+      ForestSeed%ChildNo=NOT_A_CHILD ! 占位符，表示 ForestSeed 不是任何节点的孩子
+      ForestSeed%NrOfChildren=1 ! ForestSeed 只有一个孩子，即 Root
+      ForestSeed%LeafDist=ZERO_LEAF_NODE_DIST ! 占位符，表示距离叶子节点的距离为零
+      ForestSeed%globalnodenum=FOREST_SEED ! 占位符，表示 ForestSeed 的全局节点编号为 FOREST_SEED
 
       ! First tree root
       NULLIFY(Root%Sibling)
@@ -294,21 +300,25 @@ CONTAINS
       NULLIFY(Root%Neighbor)
 
       Root%Parent=>ForestSeed
-      Root%level=rootlevel
+      Root%level=rootlevel ! 对于当前既未被细化也未被粗化的网格块，其层级即为 rootlevel，也就是0
       Root%ChildNo=FIRST_CHILD
       Root%NrOfChildren=NO_CHILDREN
       Root%LeafDist=ZERO_LEAF_NODE_DIST
       globalnodeindex=1
       Root%globalnodenum=globalnodeindex
 
-      DO L=-MaxDepth,MaxDepth
-         NULLIFY(YoungestOnLevel(L)%NodePtr)
+      ! 这里清空了 YoungestOnLevel 和 EldestOnLevel 数组中所有层级的节点指针，并将 NrOfNodes 数组中所有层级的节点计数初始化为 0。
+      DO L=-MaxDepth,MaxDepth ! 他的取值范围是[-MaxDepth, MaxDepth]，换句话说就是从最粗到最细的层级
+         NULLIFY(YoungestOnLevel(L)%NodePtr) ! 注意，这里这个YoungestOnLevel是一个数组，L是索引，类比C++的操作就是 YoungestOnLevel[L].NodePtr = nullptr;
          NULLIFY(EldestOnLevel(L)%NodePtr)
          NrOfNodes(L)=0
       END DO
+
+      ! 这是个初始化操作，将根层（rootlevel）的 YoungestOnLevel 和 EldestOnLevel 指针都指向 Root 节点，并将该层的节点计数设为 1。
       YoungestOnLevel(rootlevel)%NodePtr=>Root
       EldestOnLevel(rootlevel)%NodePtr=>Root
       NrOfNodes(rootlevel)=1
+
       ALLOCATE(Root%Info,STAT=iError)  ! Allocate space for NodeInfo
       IF (iError /= 0) THEN
          PRINT *,"Error allocating tree root Info in InitForest."
@@ -319,6 +329,7 @@ CONTAINS
       !
       IF (.NOT. PRESENT(InfoInit)) RETURN
       IF (.NOT. InfoInit) RETURN
+      ! 当这个树结束的时候，事实上他只有一个真实的有效且空节点，就是Root节点，以及一个哨兵节点ForestSeed
    END SUBROUTINE InitForest
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -740,7 +751,7 @@ CONTAINS
       IMPLICIT NONE
 !
       INTEGER:: level
-      INTERFACE
+      INTERFACE ! 这个关键字的意思是定义一个接口，用于描述一个函数或子程序的签名和参数类型，事实上实现了C++中的函数指针功能
          INTEGER FUNCTION FncN(info,param)
             USE NodeInfoDef
             TYPE(nodeinfo):: info
@@ -757,9 +768,10 @@ CONTAINS
          STOP
       END IF
 !
-      currentnode => youngestonlevel(level)%nodeptr
+      currentnode => youngestonlevel(level)%nodeptr ! 关键字=>的意思是将指针currentnode指向youngestonlevel(level)%nodeptr所指向的节点
       currentlevel = level
 !
+      ! 真实的遍历过程，从该层最年轻节点开始，沿着 Neighbor 链逐一访问每个节点，并调用用户提供的回调函数 FncN。
       DO
          IF(.NOT. ASSOCIATED(currentnode)) EXIT
          nextnode => currentnode%neighbor
